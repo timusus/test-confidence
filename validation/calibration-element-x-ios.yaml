@@ -1,0 +1,335 @@
+# Calibration: Element X iOS
+# Codebase: /tmp/element-x-ios
+# Date: 2026-03-21
+# Tool version: confidence (current main branch)
+#
+# Element X iOS is a production Matrix chat client using modern Swift patterns.
+# Testing patterns observed:
+#   - Swift Testing framework (@Test, #expect, @Suite, struct-based test suites) is the PRIMARY
+#     unit testing framework, used pervasively across UnitTests/
+#   - XCTest (XCTestCase subclasses) used for UI tests in UITests/
+#   - SnapshotTesting (assertSnapshot) used in compound-ios submodule for preview snapshot tests
+#   - Generated test code (Sourcery) produces snapshot tests as extensions on struct-based suites
+#   - Combine publishers tested via deferFulfillment pattern (custom async helper)
+#   - Generated protocol mocks (AudioPlayerMock etc.) with property-based recording
+#     (e.g. .stopCalled, .seekToReceivedProgress) -- these are Sourcery-generated mocks
+#   - Issue.record() used as Swift Testing equivalent of XCTFail
+#
+# CRITICAL FINDING: The tool does not recognize #expect() as an assertion. All Swift Testing
+# files have severely undercounted assertions. Methods using only #expect are reported as
+# "zero assertion methods". This is the dominant gap for this codebase.
+
+annotations:
+  - file: "UnitTests/Sources/RoomSummaryTests.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Expert: Pure behavioral test suite using Swift Testing (struct-based, @Test, #expect).
+      Tests the RoomSummary avatar computation logic -- given different combinations of
+      isDirect/isSpace/hasRoomAvatar/isTombstoned, verifies the correct .avatar enum case
+      is produced with the correct associated values. Uses switch statements to pattern-match
+      on the result enum, asserting associated values with #expect and using Issue.record()
+      for unexpected cases. No mocks, no doubles -- just constructs a RoomSummary via a
+      helper and asserts its output. The switch/case pattern is idiomatic for exhaustive
+      enum testing in Swift, not conditional test logic.
+
+      Manual assertion count: 11 #expect assertions across 5 test methods.
+      Per method: roomAvatar=3, dmAvatarSet=3, dmAvatarNotSet=1, spaceAvatar=3, tombstonedAvatar=1.
+      Additionally, Issue.record() is used as a failure assertion (4 cases per switch method).
+
+      Tool output: File IS found. Reports 4 totalAssertions, 4 behavioralMethods, 1 unclassifiedMethod.
+      Reports tombstonedAvatar as zero-assertion method. Reports 4 ConditionalLogic anti-patterns.
+      structuralCouplingScore=0, mockDensity=0, outputInteractionRatio=1.
+
+      Assessment: The tool finds the file (struct-based suite detected) but severely undercounts
+      assertions. 4 vs 11 real #expect calls -- the tool misses ~64% of assertions because
+      #expect() is not recognized as an assertion macro. tombstonedAvatar has 1 #expect
+      (line 92: #expect(details.avatar == .tombstoned)) but is reported as zero-assertion.
+      The ConditionalLogic findings on switch statements are a false positive -- these are
+      exhaustive enum pattern matches, which is the standard Swift idiom for testing enum
+      results. The behavioral/structural classification is correct (all behavioral, no
+      structural coupling), and mock_placement=none is correct.
+    tool_agrees: false
+    disagreements:
+      - signal: "assertion_count"
+        tool_says: "4 total assertions"
+        expert_says: "11 #expect assertions (plus Issue.record failure calls)"
+        severity: "critical"
+      - signal: "zero_assertion_methods"
+        tool_says: "tombstonedAvatar is zero-assertion"
+        expert_says: "tombstonedAvatar has 1 #expect assertion at line 92"
+        severity: "significant"
+      - signal: "anti_pattern_conditional_logic"
+        tool_says: "4 ConditionalLogic anti-patterns (lines 22, 40, 58, 74)"
+        expert_says: "These are switch statements on result enums -- standard exhaustive enum testing in Swift, not conditional test logic. The pattern is: assert correct case with #expect, Issue.record for unexpected cases."
+        severity: "moderate"
+      - signal: "unclassified_methods"
+        tool_says: "1 unclassified method"
+        expert_says: "All 5 methods are behavioral (output assertions on a computed property). The 1 unclassified is tombstonedAvatar which has a #expect the tool missed."
+        severity: "moderate"
+
+  - file: "compound-ios/Tests/CompoundTests/PreviewTests.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Expert: Snapshot testing infrastructure file using Swift Testing (struct-based suite,
+      import Testing). This file defines the PreviewTests struct with helper methods
+      (assertSnapshots) that wrap SnapshotTesting's verifySnapshot. It does NOT contain
+      @Test methods itself -- it is the base struct that GeneratedPreviewTests.swift extends
+      with @Test methods. The assertSnapshots method calls verifySnapshot internally and
+      reports failures via Issue.record(). No mocks, no doubles. The file configures
+      snapshot device settings and validates the simulator environment.
+
+      This is a snapshot/visual regression test infrastructure. Behavioral in nature:
+      it renders UI previews and compares pixel output against reference images. No
+      structural coupling to implementation details.
+
+      Manual assertion count: 0 direct @Test methods in this file (they are in the
+      extension file). The assertSnapshots helper contains the actual verifySnapshot call.
+
+      Tool output: File is NOT found in the tool's per-file analysis. Not present in
+      the files array at all. The tool only found AvatarColorsTests, FontSizeTests, and
+      OverrideColorTests from the compound-ios/Tests directory.
+
+      Assessment: Complete miss. The tool silently drops this file, likely because it is
+      a struct-based test suite with no class inheritance from XCTestCase, and it contains
+      no @Test methods directly (they are in extensions). This means the snapshot testing
+      infrastructure is invisible to the tool.
+    tool_agrees: false
+    disagreements:
+      - signal: "file_detection"
+        tool_says: "File not found in scan output"
+        expert_says: "This is a valid Swift Testing test infrastructure file (struct PreviewTests with import Testing). It should at minimum be discovered as a test file."
+        severity: "critical"
+      - signal: "snapshot_testing_recognition"
+        tool_says: "N/A (file not scanned)"
+        expert_says: "File uses SnapshotTesting framework (verifySnapshot, assertSnapshot). The tool should recognize this as a snapshot test pattern."
+        severity: "significant"
+
+  - file: "UnitTests/Sources/AudioPlayerStateTests.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: boundary
+    notes: |
+      Expert: Comprehensive behavioral test suite using Swift Testing (struct-based,
+      @MainActor, @Test, #expect) with a Sourcery-generated protocol mock (AudioPlayerMock).
+      Tests the AudioPlayerState class which manages audio playback state transitions.
+
+      The AudioPlayerMock is a generated mock for an AudioPlayer protocol. It is used as a
+      boundary mock -- AudioPlayer is an external dependency (media playback service) that
+      the AudioPlayerState coordinates with. The mock is configured with stub values
+      (underlyingActions, state, currentTime, duration, playbackSpeed) and its behavior
+      is observed through recorded properties (.stopCalled, .seekToReceivedProgress,
+      .setPlaybackSpeedReceivedSpeed). These recorded properties are generated mock
+      infrastructure, not verify() calls -- they record what was called, and tests
+      assert on them with #expect.
+
+      The tests verify state transitions: attach/detach, play/pause/stop/error states,
+      progress updates with boundary clamping, playback speed changes, and Combine
+      publisher-driven async state changes via deferFulfillment.
+
+      Manual assertion count: 56 #expect assertions across 14 @Test methods.
+      Per method: attach=2, detach=4, delayedState=4, otherActionsAreNotDelayed=4,
+      reportError=2, updateProgress=12, didStartLoading=1, didFinishLoading=2,
+      didStartPlaying=4, didPausePlaying=4, didStopPlaying=4, didFinishPlaying=4,
+      setPlaybackSpeed=7, didFailed=4.
+
+      About 10 of the 56 assertions check mock recorded properties (seekToReceivedProgress,
+      setPlaybackSpeedReceivedSpeed, stopCalled). These are interaction checks, but they
+      verify boundary behavior (what was sent to the audio player), not internal wiring.
+      The remaining ~46 assertions are pure output/state checks.
+
+      Tool output: File IS found. Reports 20 totalAssertions, 9 behavioralMethods,
+      5 unclassifiedMethods, 0 structuralMethods. mockDensity=0, fakeCount=0.
+      5 methods flagged as zero-assertion: attach, detach, reportError, updateProgress,
+      setPlaybackSpeed. structuralCouplingScore=0.
+
+      Assessment: Severe undercount. Tool reports 20 assertions vs 56 actual #expect calls.
+      It misses 64% of assertions. 5 methods flagged as zero-assertion that collectively
+      have 27 #expect assertions. The mockDensity=0 is wrong -- AudioPlayerMock is clearly
+      a mock (named *Mock, used with .stopCalled, .seekToReceivedProgress recorded
+      properties). The mock is not detected at all, likely because the tool looks for
+      mock framework imports (MockK, OCMock) rather than Sourcery-generated protocol mocks.
+      The behavioral classification is directionally correct but understated.
+    tool_agrees: false
+    disagreements:
+      - signal: "assertion_count"
+        tool_says: "20 total assertions"
+        expert_says: "56 #expect assertions across 14 methods"
+        severity: "critical"
+      - signal: "zero_assertion_methods"
+        tool_says: "5 zero-assertion methods: attach, detach, reportError, updateProgress, setPlaybackSpeed"
+        expert_says: "All 5 have assertions. attach=2, detach=4, reportError=2, updateProgress=12, setPlaybackSpeed=7"
+        severity: "critical"
+      - signal: "mock_detection"
+        tool_says: "mockDensity=0, fakeCount=0 (no doubles detected)"
+        expert_says: "AudioPlayerMock is a Sourcery-generated protocol mock used throughout. It has recorded properties (.stopCalled, .seekToReceivedProgress) and stub configuration. Should be detected as a mock/double."
+        severity: "significant"
+      - signal: "unclassified_methods"
+        tool_says: "5 unclassified methods"
+        expert_says: "All 14 methods are behavioral. The 5 'unclassified' ones have #expect assertions that the tool cannot see."
+        severity: "significant"
+      - signal: "mock_placement"
+        tool_says: "none (no mocks detected)"
+        expert_says: "boundary -- AudioPlayerMock wraps an AudioPlayer protocol (external media playback dependency)"
+        severity: "moderate"
+
+  - file: "UITests/Sources/UserSessionScreenTests.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: true
+    mock_placement: none
+    notes: |
+      Expert: XCTest-based UI test class (XCTestCase subclass). Tests user session flows
+      through the actual UI using XCUITest. Each test method launches the app with a specific
+      configuration, navigates through screens by tapping buttons/cells, and asserts UI state
+      with XCTAssert (element existence checks) and assertScreenshot (visual regression).
+
+      This is a behavioral UI test -- it interacts with the app through the UI layer and
+      asserts on visible output (element existence, screenshot comparison). No mocks of
+      internal components. However, it IS fragile due to:
+      1. Heavy use of Task.sleep (13 instances) for timing -- brittle wait strategy
+      2. UI element identification by string names and accessibility identifiers
+      3. Long multi-step test methods (testSpaceExploration is ~70 lines of sequential UI actions)
+      4. Device-specific conditional logic (iPhone vs iPad in testAcceptSpaceInvite)
+      The fragility is from UI test brittleness (timing, selectors), not structural coupling.
+
+      Manual assertion count: 25 XCTAssert/XCTAssertTrue calls + 17 assertScreenshot calls = 42.
+      By method: testUserSessionFlows=6, testUserSessionReply=3, testElementCall=3,
+      testSpaceExploration=23, testAcceptSpaceInvite=9 (including the if/else branch assertions).
+      Note: assertScreenshot is a custom helper that internally performs snapshot comparison.
+
+      Tool output: File IS found. Reports 40 totalAssertions, 5 behavioralMethods,
+      0 structuralMethods. 13 ThreadSleep anti-patterns, 1 AssertionRoulette (testSpaceExploration),
+      1 ConditionalLogic (testAcceptSpaceInvite line 173). structuralCouplingScore=0.
+      All assertions classified as Output target, Medium strength.
+
+      Assessment: Mostly correct. The tool correctly identifies this as a behavioral test
+      file with no structural coupling. ThreadSleep detection is excellent -- all 13
+      Task.sleep calls found. The AssertionRoulette on testSpaceExploration is reasonable
+      (23 assertions in one long method). The ConditionalLogic flag on line 173 is correct
+      (if/else for iPhone vs iPad). Assertion count is 40 vs 42 manual count -- close but
+      2 short, likely missing 2 assertScreenshot calls that the tool may not recognize as
+      assertions. The tool does NOT flag this as a UI test or distinguish it from unit tests.
+      assertScreenshot is correctly counted as assertions (mostly), which is good.
+    tool_agrees: true
+    disagreements:
+      - signal: "assertion_count"
+        tool_says: "40 total assertions"
+        expert_says: "42 assertions (25 XCTAssert* + 17 assertScreenshot). Tool misses 2, likely assertScreenshot calls not recognized."
+        severity: "minor"
+      - signal: "test_type_classification"
+        tool_says: "No distinction from unit tests"
+        expert_says: "This is a UI test (XCUITest). It tests through the app UI, not unit-level code. The fragility profile is fundamentally different from unit tests."
+        severity: "minor"
+      - signal: "assertion_strength"
+        tool_says: "All 40 assertions rated Medium strength"
+        expert_says: "Most assertions are XCTAssert(element.waitForExistence) which is a weak existence check -- should be Weak, not Medium. The assertScreenshot calls are strong (pixel comparison)."
+        severity: "moderate"
+
+  - file: "compound-ios/Tests/CompoundTests/GeneratedPreviewTests.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Expert: Sourcery-generated snapshot test file. Extends the PreviewTests struct
+      (defined in PreviewTests.swift) with 18 @Test methods, one per SwiftUI preview
+      provider. Each method iterates over a preview provider's _allPreviews and calls
+      assertSnapshots for each preview variant. Uses Swift Testing (@Test with display
+      name strings, e.g. @Test("BigIcon")).
+
+      This is purely behavioral: it renders SwiftUI previews and compares visual output
+      against reference snapshots. No mocks, no structural coupling, no interaction
+      verification. The tests protect against visual regressions in the design system
+      components (BigIcon, CompoundButtonStyle, ListRow, etc.).
+
+      Manual assertion count: 18 @Test methods, each calling assertSnapshots in a loop.
+      The actual assertion count depends on the number of previews per provider and the
+      number of snapshot devices (2 per the PreviewTests config). So each @Test method
+      produces 2+ snapshot assertions at runtime. Statically, there are 18 assertSnapshots
+      calls (one per method, inside a loop).
+
+      Tool output: File is NOT found in the tool's per-file analysis. It appears only
+      in the surface coverage section as a testFile reference for a ViewModel, but is
+      not analyzed as a test file itself. The tool references a DIFFERENT path:
+      "/tmp/element-x-ios/PreviewTests/Sources/GeneratedPreviewTests.swift" in surface
+      coverage, which is a different file from the compound-ios one.
+
+      Assessment: Complete miss. The tool does not analyze this file at all. This is an
+      extension on a struct-based Swift Testing suite -- the tool likely cannot discover
+      it because: (1) it is a struct extension, not a class inheriting XCTestCase,
+      (2) the struct definition is in a different file (PreviewTests.swift), and
+      (3) the file has no import XCTest. This means all 18 snapshot test methods are
+      invisible to the tool. For a design system library, this is the entire test suite.
+    tool_agrees: false
+    disagreements:
+      - signal: "file_detection"
+        tool_says: "File not found in per-file analysis"
+        expert_says: "This file contains 18 @Test methods (generated snapshot tests for the Compound design system). It should be discovered and analyzed as a test file."
+        severity: "critical"
+      - signal: "assertion_count"
+        tool_says: "N/A (file not scanned)"
+        expert_says: "18 @Test methods with assertSnapshots calls (snapshot assertions)"
+        severity: "critical"
+      - signal: "generated_code_detection"
+        tool_says: "N/A"
+        expert_says: "File header explicitly states 'Generated using Sourcery' and 'DO NOT EDIT'. The tool should flag this as generated test code."
+        severity: "minor"
+
+# ============================================================================
+# Summary of systematic gaps found
+# ============================================================================
+#
+# 1. CRITICAL: #expect() not recognized as assertion
+#    Affects: All Swift Testing files (RoomSummaryTests, AudioPlayerStateTests,
+#    and likely hundreds of other files in this codebase).
+#    Impact: Assertion counts are ~64% undercounted. Methods using only #expect
+#    are falsely flagged as "zero assertion methods".
+#    Root cause: The assertion detector only recognizes XCTAssert* patterns,
+#    not Swift Testing's #expect macro.
+#
+# 2. CRITICAL: Struct-based test suites with no @Test methods dropped silently
+#    Affects: PreviewTests.swift (base struct), and potentially other test
+#    infrastructure files.
+#    Impact: Test infrastructure files that define shared helpers for
+#    struct-extension-based test organization are invisible.
+#    Root cause: File discovery requires either XCTestCase inheritance or
+#    @Test methods in the same file.
+#
+# 3. CRITICAL: Extension-only test files not discovered
+#    Affects: GeneratedPreviewTests.swift (extension PreviewTests with 18 @Test methods).
+#    Impact: Entire test suites written as extensions on structs defined elsewhere
+#    are not found.
+#    Root cause: The tool looks for class/struct definitions with test patterns,
+#    not extensions that add @Test methods.
+#
+# 4. SIGNIFICANT: Sourcery-generated protocol mocks not detected
+#    Affects: AudioPlayerMock and likely many other *Mock types in the codebase.
+#    Impact: mockDensity=0 for files that heavily use generated mocks. Mock
+#    placement analysis produces no results.
+#    Root cause: Mock detection looks for framework imports (MockK, OCMock) or
+#    specific mock creation calls, not Sourcery-generated protocol conformances
+#    with *Mock naming and recorded property patterns (.stopCalled, *ReceivedProgress).
+#
+# 5. MODERATE: switch/case on result enums flagged as ConditionalLogic anti-pattern
+#    Affects: RoomSummaryTests and similar enum-testing patterns.
+#    Impact: False positive anti-pattern findings. Exhaustive enum matching is
+#    standard Swift testing idiom, not conditional test logic.
+#    Root cause: The ConditionalLogic detector sees switch/if without distinguishing
+#    "asserting on enum shape" from "branching test behavior".
+#
+# 6. MODERATE: Issue.record() not recognized as failure assertion
+#    Affects: Any Swift Testing file using Issue.record() instead of XCTFail().
+#    Impact: Test completeness undercounted. Exhaustive enum testing with
+#    Issue.record() for unexpected cases is invisible.
+#
+# 7. MINOR: No UI test vs unit test distinction
+#    Affects: UserSessionScreenTests and other UITests/ files.
+#    Impact: UI tests have fundamentally different fragility profiles than unit
+#    tests. Reporting them together without distinction reduces signal quality.

@@ -1,0 +1,182 @@
+# Calibration: Alamofire
+# Codebase: /tmp/Alamofire
+# Platform: iOS/Swift
+# Character: XCTest, network library, async patterns with expectations, some stubs
+# Date: 2026-03-20
+
+annotations:
+  - file: "Tests/ParameterEncoderTests.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Pure input/output encoding tests. Creates an encoder, passes in parameters, asserts on
+      the encoded output (HTTP body, query string, content-type header). No mocks, no stubs,
+      no network calls. These are the gold standard of behavioral tests — pure functions with
+      deterministic output.
+
+      Tool reports: 90 assertions (83 strong, 6 medium, 1 weak), 100% output, 0 structural
+      coupling, GodTestClass anti-pattern flagged. All correct except the GodTestClass flag.
+
+      The GodTestClass flag is a false positive. The file contains 4 separate test classes
+      (JSONParameterEncoderTests, SortedKeysJSONParameterEncoderTests,
+      URLEncodedFormParameterEncoderTests, URLEncodedFormEncoderTests). The last class has
+      many methods because URL encoding has many edge cases (types, nesting, arrays, booleans,
+      special characters). This is appropriate test organization — one class per encoder —
+      not a god class problem.
+
+      458 unclassified statements is high but reasonable — each test has Given/When/Then with
+      encoder creation and parameter setup steps that are not assertions.
+    tool_agrees: true
+    disagreements:
+      - signal: "antiPatterns.GodTestClass"
+        tool_says: "flagged as god test class"
+        expert_says: "false positive — file has 4 test classes, the largest tests many encoding edge cases appropriately"
+        severity: medium
+        explanation: "The tool appears to count total test methods across the entire file rather than per-class. URLEncodedFormEncoderTests has many methods but each tests a specific encoding scenario. This is thorough, not a god class."
+
+  - file: "Tests/ValidationTests.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Integration-style tests that make real HTTP requests to a test server and validate
+      response status codes and content types. Uses XCTest expectations for async handling.
+      Assertions check error presence/absence, error types, status codes, and content types.
+
+      Tool reports: 51 assertions (4 strong, 9 medium, 38 weak), 100% output, 0 structural
+      coupling. The high weak count (38) is concerning.
+
+      The 38 "weak" assertions are XCTAssertNotNil/XCTAssertNil checks. In context, these are
+      meaningful — asserting that validation did or did not produce an error is the primary
+      behavioral check. XCTAssertNil(requestError) after a 200 response is exactly the right
+      assertion. The tool's strength classification penalizes null checks uniformly, but in
+      validation tests, null/not-null IS the behavior being tested.
+
+      This is a calibration issue: the tool should consider the semantic context of nil checks.
+      When testing error-producing APIs, XCTAssertNil(error) is a strong behavioral assertion,
+      not a weak one.
+    tool_agrees: true
+    disagreements:
+      - signal: "assertions.strengthDistribution"
+        tool_says: "38 weak (75% of assertions)"
+        expert_says: "Most 'weak' assertions are XCTAssertNil/NotNil on error values, which are semantically strong for validation tests"
+        severity: high
+        explanation: "XCTAssertNil(error) and XCTAssertNotNil(error) are the correct, idiomatic assertions for testing validation behavior. Classifying them as 'weak' misrepresents the test quality. The tool should recognize that nil/not-nil checks on Result/Error types are behavioral assertions about success/failure."
+
+  - file: "Tests/RetryPolicyTests.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: boundary
+    notes: |
+      Tests the RetryPolicy logic by calling retry() with various inputs (HTTP methods,
+      status codes, error codes) and asserting on the RetryResult output (retryRequired,
+      delay, error). Uses a StubRequest (hand-written test double that subclasses DataRequest)
+      to provide controlled request/response state without network calls.
+
+      The ConditionalLogic anti-pattern flags (lines 205, 402) are technically correct — there
+      are `if results.count == 3` guards before detailed assertions. However, these are
+      defensive guards that prevent index-out-of-bounds crashes, not conditional test logic
+      that skips assertions. The preceding XCTAssertEqual(results.count, 3) ensures the guard
+      is always entered in passing tests. This is a minor false positive.
+
+      Tool reports: 28 assertions (20 strong, 8 medium), 100% output, 0 structural coupling.
+      The assertion count seems low — the loop-based tests iterate over all HTTP methods and
+      status codes, generating hundreds of assertion invocations at runtime. The tool counts
+      static assertion call sites, not runtime invocations, which is a reasonable limitation
+      but undercounts the actual test coverage.
+
+      StubRequest is not detected as a test double (fakeCount=0). It subclasses DataRequest
+      and overrides properties to return controlled values — this is a stub/fake pattern.
+    tool_agrees: true
+    disagreements:
+      - signal: "antiPatterns.ConditionalLogic"
+        tool_says: "2 instances of conditional logic"
+        expert_says: "Defensive guards before indexed access, preceded by count assertion — not problematic conditional logic"
+        severity: low
+        explanation: "The if-guards prevent crashes when the count assertion fails. The pattern is: assert count, then conditionally access elements. This is defensive coding, not conditional test logic that could skip assertions silently."
+      - signal: "doubles.fakeCount"
+        tool_says: 0
+        expert_says: "1 test double (StubRequest subclassing DataRequest)"
+        severity: low
+        explanation: "StubRequest is a hand-written stub that subclasses a framework class. The tool does not detect subclass-based test doubles."
+
+  - file: "Tests/CachedResponseHandlerTests.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Tests the ResponseCacher behavior by making real requests through a Session configured
+      with a custom URLCache, then asserting on whether the response was cached. Uses the
+      real network stack with a test server.
+
+      Tool reports: 16 assertions (9 strong, 7 medium), 100% output, 0 structural coupling,
+      3 zero-assertion methods flagged. All signals correct.
+
+      The 3 zero-assertion methods (testThatCacheResponseCacherCanBeCreatedStaticallyFromProtocol,
+      etc.) are compilation tests — they verify that static factory methods exist and compile
+      correctly. These are legitimate tests (they catch API breakage) but have no runtime
+      assertions. The tool correctly flags them.
+
+      The 54 unclassified statements are async setup (expectation creation, request construction,
+      waitForExpectations) — standard XCTest async patterns.
+    tool_agrees: true
+    disagreements: []
+
+  - file: "Tests/AuthenticationInterceptorTests.swift"
+    behavioral: true
+    structural_coupling: medium
+    fragile: false
+    mock_placement: mixed
+    notes: |
+      Tests the AuthenticationInterceptor by creating a TestAuthenticator (hand-written mock
+      that tracks call counts) and asserting on both the response output AND the authenticator's
+      internal call counts (applyCount, refreshCount, didRequestFailDueToAuthErrorCount,
+      isRequestAuthenticatedWithCredentialCount).
+
+      This is a borderline case. The response assertions (checking headers, status codes, error
+      types) are behavioral. But the authenticator call count assertions (applyCount == 1,
+      refreshCount == 0) are structural — they verify HOW the interceptor interacted with the
+      authenticator, not just WHAT the output was. If the interceptor's internal implementation
+      changed to call apply() differently but produced the same result, these tests would break.
+
+      Tool reports: 116 assertions (111 strong, 5 medium), 100% output-targeted, 0 structural
+      coupling. The tool classifies ALL assertions as output-targeted and reports zero structural
+      coupling. This is wrong.
+
+      The call count assertions (authenticator.applyCount, authenticator.refreshCount, etc.)
+      are interaction verification — they are structurally equivalent to verify(exactly = 1)
+      { authenticator.apply(any()) } in a mocking framework. The tool misses this because
+      TestAuthenticator is a hand-written class with count properties, not a framework mock
+      with verify() calls.
+
+      ConditionalLogic flags (4 instances) are `if case let` pattern matching on error types.
+      These are legitimate — they extract associated values from enums for assertion. In 2 cases
+      there is no else/fallback assertion, meaning the test silently passes if the pattern does
+      not match. This is a real (minor) issue.
+    tool_agrees: false
+    disagreements:
+      - signal: "structuralCouplingScore"
+        tool_says: 0
+        expert_says: "medium — ~40% of assertions check call counts on the test authenticator"
+        severity: high
+        explanation: "The tool only detects structural coupling through framework-level verify() calls. Hand-written test doubles with count-tracking properties (applyCount, refreshCount, didRequestFailDueToAuthErrorCount) are functionally identical to mock verification but are invisible to the tool. This is a significant blind spot for codebases that use hand-written mocks."
+      - signal: "assertions.targetDistribution"
+        tool_says: "100% Output"
+        expert_says: "~60% Output, ~40% Interaction (call count checks)"
+        severity: high
+        explanation: "XCTAssertEqual(authenticator.applyCount, 1) is classified as 'Output' because it looks like a property check. But semantically it is interaction verification — confirming HOW MANY TIMES a collaborator method was called. The tool cannot distinguish between asserting on domain output properties vs. interaction-tracking properties."
+      - signal: "doubles.fakeCount"
+        tool_says: 0
+        expert_says: "2 test doubles (TestAuthenticator, PathAdapter)"
+        severity: medium
+        explanation: "Hand-written test doubles not detected."
+      - signal: "antiPatterns.ConditionalLogic"
+        tool_says: "4 instances"
+        expert_says: "2 are legitimate (if case let with no else fallback), 2 are borderline (if case let used for enum destructuring before assertions)"
+        severity: low
+        explanation: "The if-case-let pattern for enum destructuring is idiomatic Swift. The real concern is the missing else clause that would fail the test if the pattern does not match. The tool flags the right lines but for a slightly wrong reason."

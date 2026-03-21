@@ -1,0 +1,323 @@
+# Calibration: Wire Android
+# Codebase: /tmp/wire-android
+# Date: 2026-03-21
+# Tool version: confidence (current main branch)
+#
+# Wire Android is a large Kotlin Android app using MockK extensively via an
+# Arrangement pattern (inner class with @MockK fields, builder methods for
+# stubbing, and an arrange() method returning the SUT). Tests use JUnit 4
+# and JUnit 5, Turbine for Flow testing, Robolectric for Android framework
+# tests, and Compose UI testing (androidTest). The Arrangement pattern means
+# most mocks are used as stubs (coEvery/every) with verify blocks appearing
+# selectively. Assertions use JUnit assertEquals, Kotlin assert(), assertIs,
+# assertNotNull, assertNull, assertThrows, and Compose assertIsDisplayed.
+
+annotations:
+  - file: "app/src/test/kotlin/com/wire/android/analytics/ObserveCurrentSessionAnalyticsUseCaseTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: boundary
+    notes: >
+      Expert: This test uses Turbine to observe Flow emissions from
+      ObserveCurrentSessionAnalyticsUseCase. There are 8 @Test methods testing
+      various session/analytics scenarios. The Arrangement class has 4 @MockK
+      fields (UserDataStore, UserDataStoreProvider, AnalyticsIdentifierManager,
+      GlobalDataStore) all used purely as stubs via coEvery/every -- no verify
+      calls anywhere. Assertions check output state: assertIs<> for type
+      checking the identifierResult, assertEquals for profileProperties fields,
+      and a helper assertAnalyticsProfileProperties that does 5 assertEquals
+      calls. Manual assertion count: Test 1: 3 (assertIs + 2 assertEquals).
+      Test 2: 1 assertIs + 5 via helper = 6. Test 3: same as test 2 = 6.
+      Test 4: 1 assertIs + 5 via helper + 1 assertEquals = 7. Test 5: same = 7.
+      Test 6: same = 7. Test 7: 2 assertIs + 5 via helper = 7. Test 8: 3
+      (assertIs + 2 assertEquals). Total across all methods: ~46 individual
+      assertion statements. However, the tool counts unique assertion call sites
+      in source, not invocations across test methods. Counting distinct assertion
+      call sites in the file: assertIs appears at lines 61, 83, 104, 128, 157,
+      182, 204, 217, 234 = 9. assertEquals appears at lines 62, 63, 130, 159,
+      184, 235, 236 = 7. assertAnalyticsProfileProperties helper calls at
+      lines 84, 105, 129, 158, 183, 205 = 6 (each containing 5 assertEquals).
+      The tool reports 14 totalAssertions, which likely counts the top-level
+      assertion call sites but not assertions inside the helper method. The
+      helper method (lines 240-246) has 5 assertEquals calls that run for 6
+      invocations = 30 more assertions at runtime. The tool likely counts
+      per-method assertions only for direct calls, not following helper
+      indirection. All mocks are stubs (GlobalDataStore, UserDataStore,
+      UserDataStoreProvider used via every/coEvery, AnalyticsIdentifierManager
+      passed as a provider lambda). No verify calls. This is purely behavioral.
+
+      Tool output: totalAssertions=14, behavioralMethods=8, structuralMethods=0,
+      outputInteractionRatio=1.0, structuralCouplingScore=0, mockDensity=0,
+      scope=Local. All 14 assertions classified as Medium strength, Output target.
+
+      Assessment: Tool correctly identifies this as fully behavioral with zero
+      structural coupling. The 8 behavioral methods matches the 8 @Test methods.
+      The assertion count of 14 is an undercount because the tool does not follow
+      assertions inside the helper method assertAnalyticsProfileProperties (which
+      contains 5 assertEquals calls invoked 6 times). The real assertion call-site
+      count is closer to 14 + 30 = 44. Strength classification: assertIs<> from
+      com.wire.android.assertIs (custom extension) and assertEquals are both
+      classified as Medium. assertEquals should be Strong (exact value matching).
+      The custom assertIs is likely a type-check assertion similar to
+      assertInstanceOf, which is typically Medium, so that is reasonable.
+    tool_agrees: true
+    disagreements:
+      - signal: "assertion_count"
+        tool_says: "14 total assertions"
+        expert_says: "14 direct assertion call sites in test methods, but the helper method assertAnalyticsProfileProperties contains 5 assertEquals calls invoked from 6 test methods, adding 30 more assertion executions. Tool does not follow helper indirection. True call-site count including the helper body is ~44."
+        severity: "moderate (undercounts assertions in files using helper/utility assertion methods)"
+      - signal: "assertion_strength"
+        tool_says: "All 14 assertions classified as Medium strength"
+        expert_says: "assertEquals should be Strong (exact equality). The tool appears to classify JUnit 5 assertEquals (org.junit.jupiter.api.Assertions.assertEquals) as Medium rather than Strong. The assertIs custom extension is reasonably Medium."
+        severity: "moderate (assertEquals is one of the strongest assertion types)"
+
+  - file: "app/src/test/kotlin/com/wire/android/media/audiomessage/ConversationAudioMessagePlayerTest.kt"
+    behavioral: false
+    structural_coupling: medium
+    fragile: true
+    mock_placement: mixed
+    notes: >
+      Expert: This is a 725-line test with 10 @Test methods testing an audio
+      message player. The test style is mixed: the first 5 tests use Turbine to
+      observe state emissions (behavioral -- checking AudioMediaPlayingState
+      transitions via assert() calls), then follow up with verify blocks checking
+      MediaPlayer method calls (structural). The last 4 tests (lines 506-614)
+      are purely structural -- they only use verify/coVerify to check interactions
+      with no output assertions. Arrangement has 7 @MockK fields: Context
+      (boundary), CoreLogic (boundary/facade), MediaPlayer (boundary -- Android
+      framework), ServicesManager (boundary -- Android service), AudioFocusHelper
+      (boundary), GetMessageAssetUseCase (internal -- use case), GetMessageByIdUseCase
+      (internal -- use case). Manual assertion count: The tests heavily use
+      Kotlin assert() (bare assert, not JUnit). Counting assert() calls in test
+      methods: Test 1 (lines 62-116): 10 assert() + verify block with 6 verify
+      calls. Test 2 (lines 120-186): 12 assert() + verify block with 5 verify.
+      Test 3 (lines 190-278): 18 assert() + 1 assertEquals + verify block with
+      4 verify. Test 4 (lines 282-419): 30 assert() + verify block with 4 verify.
+      Test 5 (lines 422-503): 14 assert() + verify block with 4 verify.
+      Test 6 (lines 507-519): 0 assert, 1 verify (verify-only).
+      Test 7 (lines 522-548): 0 assert, 2 verify (verify-only).
+      Test 8 (lines 551-569): 0 assert, 1 coVerify (verify-only).
+      Test 9 (lines 572-592): 0 assert, 1 coVerify (verify-only).
+      Test 10 (lines 595-613): 0 assert, 1 coVerify (verify-only).
+      Total assert() calls: ~84. Total assertEquals: 2 (lines 252, 346).
+      Total verify/coVerify blocks: ~28. The tool reports only 2 totalAssertions
+      and 7 zero-assertion methods. This is a major undercount. The tool appears
+      to not recognize Kotlin assert() as an assertion. assert() is a Kotlin
+      stdlib function that throws AssertionError on failure -- it IS an assertion,
+      just a weak one. The tool correctly flags 1 verify-only test (line 506)
+      but misses the other 4 verify-only tests (lines 522, 551, 572, 595).
+      The verify blocks in tests 1-5 add structural coupling on top of
+      behavioral checks. The file IS fragile because many tests verify exact
+      MediaPlayer method call counts (e.g., verify(exactly = 3) { mediaPlayer.prepare() })
+      which would break if the internal implementation changes how it manages
+      the MediaPlayer lifecycle.
+
+      Tool output: totalAssertions=2, behavioralMethods=2, structuralMethods=1,
+      unclassifiedMethods=7, structuralCouplingScore=14.3, 7 zeroAssertionMethods
+      listed, 1 VerifyOnlyTest flagged, outputInteractionRatio=0.67,
+      setupComplexity ratio=5.
+
+      Assessment: The tool has a significant blind spot with Kotlin assert().
+      It counts only 2 assertions (the 2 assertEquals calls) and misses all ~84
+      assert() calls. This cascades: 7 methods are marked as zero-assertion when
+      5 of them have extensive assert() based state verification. Only 2 methods
+      are classified as behavioral when 5 should be (the first 5 tests all check
+      output state via assert). The tool correctly identifies the structural
+      coupling from verify blocks and flags the verify-only pattern, but only
+      catches 1 of 5 verify-only tests. The mock placement classification is
+      mostly correct -- MediaPlayer, Context, ServicesManager, AudioFocusHelper
+      as Boundary is right. GetMessageAssetUseCase and GetMessageByIdUseCase as
+      Internal is debatable (they are use cases / interactors, not repositories,
+      so Internal is reasonable via verb-prefix detection for "Get"). CoreLogic
+      as Boundary is reasonable since it is a facade/entry point.
+    tool_agrees: false
+    disagreements:
+      - signal: "assertion_count"
+        tool_says: "2 total assertions, 7 zero-assertion methods"
+        expert_says: "~86 assertions total (84 assert() + 2 assertEquals). Only 5 methods are truly zero-assertion (tests 6-10 which are verify-only). The tool does not recognize Kotlin assert() as an assertion. This is the most impactful detection gap in this file."
+        severity: "significant (misses the dominant assertion pattern in this file)"
+      - signal: "behavioral_classification"
+        tool_says: "2 behavioral, 1 structural, 7 unclassified"
+        expert_says: "5 behavioral (tests 1-5 check state transitions), 5 structural/verify-only (tests 6-10 only verify interactions). Tests 1-5 are mixed (behavioral assertions + structural verify blocks) but primarily behavioral. The 7 unclassified are a direct consequence of not counting assert()."
+        severity: "significant (cascading error from assertion blindspot)"
+      - signal: "verify_only_detection"
+        tool_says: "1 VerifyOnlyTest flagged (line 506)"
+        expert_says: "5 tests are verify-only (tests 6-10, lines 506-613). The tool misses 4 of 5. Tests 8-10 use coVerify which may not be detected as a verify pattern."
+        severity: "moderate (misses coVerify-only tests)"
+      - signal: "unclassified_statements"
+        tool_says: "76 unclassified statements"
+        expert_says: "Most of these 76 are assert() calls that should be classified as assertions. The high unclassified count is a symptom of the assert() detection gap."
+        severity: "moderate (inflated unclassified count)"
+
+  - file: "app/src/test/kotlin/com/wire/android/ui/analytics/AnalyticsUsageViewModelTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: boundary
+    notes: >
+      Expert: ViewModel test with 3 test methods: 1 @ParameterizedTest with
+      @EnumSource (5 enum cases) and 2 regular @Test methods. The Arrangement
+      class uses mockk<UserDataStore>() and mockk<SelfServerConfigUseCase>()
+      as stubs. The parameterized test checks viewModel.state.shouldDisplayDialog
+      via assertEquals -- purely behavioral. The 2 regular tests check both
+      output state (assertEquals on viewModel.state.shouldDisplayDialog) AND
+      verify interactions (coVerify on dataStore method calls). Manual assertion
+      count: Parameterized test: 1 assertEquals (runs 5 times via enum).
+      Test 2: 2 assertEquals + 2 coVerify = 4. Test 3: 2 assertEquals + 2
+      coVerify = 4. Total assertion call sites: 5 assertEquals + 4 coVerify = 9.
+      The parameterized test is behavioral. Tests 2-3 are mixed: they assert
+      output state AND verify interactions. The coVerify calls check that
+      dataStore.setIsAnonymousAnalyticsEnabled and setIsAnalyticsDialogSeen were
+      called -- this is verifying side effects through a data store interface,
+      which is borderline boundary verification. UserDataStore and
+      SelfServerConfigUseCase are both boundary-level abstractions. The mock
+      placement is boundary (data store and use case interfaces).
+
+      Tool output: totalAssertions=4, behavioralMethods=0, structuralMethods=2,
+      unclassifiedMethods=0, structuralCouplingScore=15, outputInteractionRatio=0.5,
+      mockDensity=0.22. Interaction target=4, Output target=4.
+
+      Assessment: The tool reports 0 behavioral methods and 2 structural, but
+      this misses the @ParameterizedTest method entirely. The parameterized test
+      (line 43) uses @ParameterizedTest + @EnumSource and is purely behavioral
+      (only assertEquals on output state). The tool appears to not recognize
+      @ParameterizedTest as a test method annotation, so it reports only 2 test
+      methods (the @Test ones) instead of 3. Total test methods should be 3 (1
+      parameterized + 2 regular). The parameterized test is behavioral, so
+      behavioralMethods should be at least 1. The 2 @Test methods have both
+      assertEquals (output) and coVerify (interaction), making them mixed. The
+      tool classifies both as structural, which is defensible since they contain
+      verify calls, but the assertEquals assertions on viewModel.state show
+      behavioral intent too. The assertion count of 4 likely counts only the
+      assertEquals calls in the 2 @Test methods and misses the 1 in the
+      @ParameterizedTest. The Interaction target=4 correctly counts the 4
+      coVerify calls.
+    tool_agrees: false
+    disagreements:
+      - signal: "test_method_count"
+        tool_says: "2 test methods (0 behavioral, 2 structural)"
+        expert_says: "3 test methods (1 @ParameterizedTest + 2 @Test). The @ParameterizedTest is not detected. It is purely behavioral (assertEquals on output). Total should be: 1 behavioral, 2 mixed/structural."
+        severity: "significant (@ParameterizedTest is a common JUnit 5 pattern not being detected)"
+      - signal: "assertion_count"
+        tool_says: "4 total assertions"
+        expert_says: "5 assertEquals + 4 coVerify = 9 assertion/verification call sites. The missing 1 assertEquals is from the undetected @ParameterizedTest method."
+        severity: "moderate (cascading from @ParameterizedTest blindspot)"
+      - signal: "structural_coupling_score"
+        tool_says: "structuralCouplingScore=15"
+        expert_says: "The coVerify calls verify boundary-level side effects (data store writes), not internal wiring. This is closer to behavioral verification of side effects than structural coupling to implementation details. A score of 15 overstates the coupling for this pattern. The two @Test methods are mixed, not purely structural."
+        severity: "minor (boundary verification scored same as internal mock verification)"
+
+  - file: "app/src/test/kotlin/com/wire/android/emm/ManagedConfigParserTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: >
+      Expert: Pure parsing/logic test with 13 @Test methods. No mocking
+      frameworks used at all -- the only test double is a hand-crafted
+      AndroidUserContextProvider object created via createParser() helper. Tests
+      parse JSON config strings and assert on the parsed results. Assertion
+      libraries: JUnit 4 Assert (assertEquals, assertNotNull, assertNull,
+      assertThrows). Uses Robolectric runner but only for Application context,
+      not for Android UI testing. Manual assertion count: Test 1: assertNotNull
+      + 6 assertEquals = 7. Test 2: assertNotNull + 1 assertEquals = 2.
+      Test 3: assertNotNull + 1 assertEquals = 2. Test 4: assertNull = 1.
+      Test 5: assertNotNull + 1 assertEquals = 2. Test 6: assertNotNull +
+      1 assertEquals = 2. Test 7: assertNotNull + 1 assertEquals = 2.
+      Test 8: assertNull = 1. Test 9: assertThrows = 1. Test 10: assertNull = 1.
+      Test 11: assertNull = 1. Test 12: assertThrows = 1. Test 13 (not present,
+      recount): Actually there are 13 @Test methods. Let me recount from the
+      source: lines 37, 56, 66, 76, 84, 97, 110, 119, 127, 140, 149, 157, 168.
+      Total assertions: 7+2+2+1+2+2+2+1+1+1+1+1+1 = 24 assertion call sites.
+      Wait, test at line 37 has assertNotNull + 6 assertEquals = 7. Let me be
+      precise. The tool reports 28 assertions, which is higher than my count of
+      ~24. The difference might be the tool counting assertNotNull result!! (the
+      non-null assertion operator) as an additional assertion, or counting
+      differently. Actually looking again: assertNotNull(result) followed by
+      result!! -- the tool may count both. Or I may have miscounted the
+      assertEquals calls. Test 1 has: assertNotNull(result) + assertEquals x6 = 7.
+      Test 2: assertNotNull + assertEquals = 2. Test 3: assertNotNull + assertEquals
+      = 2. Test 4: assertNull = 1. Test 5: assertNotNull + assertEquals = 2.
+      Test 6: assertNotNull + assertEquals = 2. Test 7: assertNotNull + assertEquals = 2.
+      Test 8: assertNull = 1. Test 9: assertThrows = 1. Test 10: assertNull = 1.
+      Test 11: assertNull = 1. Test 12: assertThrows = 1. Actually wait - I need
+      to recount test 2 at line 56: assertNotNull + assertEquals x2 = 3, not 2.
+      And test 6 at line 97 (SSO): assertNotNull + assertEquals = 2. Let me just
+      count all assertEquals/assertNotNull/assertNull/assertThrows in the file
+      carefully. assertEquals: lines 42,43,44,45,46,47, 61,62, 69, 89, 102,
+      115,116, 125 = 14. assertNotNull: lines 41, 60, 68, 88, 101, 114, 124 = 7.
+      assertNull: lines 80, 131, 153, 163 = 4. assertThrows: lines 143, 170 = 2.
+      That gives 14+7+4+2 = 27. Close to the tool's 28. The tool might be
+      counting result!! as an implicit assertion or there is a slight parsing
+      difference. This is essentially correct.
+
+      Tool output: totalAssertions=28, behavioralMethods=13, structuralMethods=0,
+      structuralCouplingScore=0, mockDensity=0, scope=Local with isRobolectric=true,
+      outputInteractionRatio=1.0. Strength: 15 Strong, 2 Medium, 11 Weak.
+
+      Assessment: Tool output is excellent for this file. 13 behavioral methods
+      matches the 13 @Test methods. Zero structural coupling is correct. The
+      Robolectric detection is correct. Assertion count of 28 is very close to
+      my manual count of 27 (within 1). The strength distribution is reasonable:
+      assertEquals as Strong, assertNotNull/assertNull as Weak makes sense. The
+      2 Medium are likely the assertThrows calls (exception assertions). This is
+      a near-perfect classification. The only tiny issue is assertThrows should
+      arguably be Strong (it is testing specific exception types), not Medium.
+    tool_agrees: true
+    disagreements:
+      - signal: "assertion_strength"
+        tool_says: "assertThrows classified as Medium"
+        expert_says: "assertThrows (with specific exception class) is a strong assertion -- it tests that a specific exception type is thrown. Should be Strong, not Medium. Same issue noted in other calibration files for exception assertions."
+        severity: "minor (systematic underweight of exception assertions)"
+
+  - file: "app/src/androidTest/kotlin/com/wire/android/ui/common/UserProfileAvatarTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: >
+      Expert: Compose UI test with 6 @Test methods. Uses createComposeRule() to
+      render UserProfileAvatar with various configurations and asserts on UI node
+      visibility. No mocks at all -- uses real Compose rendering. The helper
+      method testIndicators() sets Compose content and calls assertNode() 3 times
+      (checking status indicator, legal hold indicator, and temporary user
+      indicator). assertNode() delegates to either assertIsDisplayed() or
+      assertDoesNotExist(). Manual assertion count: Each test calls
+      testIndicators which makes 3 assertNode calls = 3 assertions per test.
+      6 tests x 3 assertions = 18 assertion executions. However, the assertion
+      call sites in the source are: assertNode is called at lines 61, 62, 63
+      inside testIndicators. That is 3 unique call sites in the helper, invoked
+      6 times. If the tool counts call sites per test method, it would be 18.
+      If it only counts unique call sites in the helper, it would be 3. The tool
+      reports 0 assertions, which means it does not recognize the Compose
+      testing assertions (assertIsDisplayed, assertDoesNotExist) or does not
+      follow the helper method indirection. This is a significant miss. The
+      6 behavioralMethods count is correct, meaning the tool recognizes the
+      @Test annotations. But with 0 assertions detected, those 6 methods are
+      being classified as behavioral with no assertions, which is misleading.
+      Scope=Device is correct (androidTest source set with Compose test rule).
+
+      Tool output: totalAssertions=0, behavioralMethods=6, structuralMethods=0,
+      structuralCouplingScore=0, scope=Device, setupComplexity ratio=0,
+      mockDensity=0.
+
+      Assessment: The tool correctly identifies scope as Device, correctly finds
+      6 test methods, correctly reports no mocks and no structural coupling.
+      However, it reports 0 assertions which is wrong -- there are 18 assertion
+      executions (3 per test via the testIndicators helper). The Compose test
+      assertions (assertIsDisplayed, assertDoesNotExist) are apparently not
+      recognized. This is documented behavior per DESIGN.md ("Compose test file
+      note: assertions not fully analyzed"), so the tool is being transparent
+      about its limitation. The 6 unclassifiedStatements likely correspond to
+      the 6 test method bodies whose assertions cannot be parsed.
+    tool_agrees: true
+    disagreements:
+      - signal: "assertion_count"
+        tool_says: "0 assertions detected"
+        expert_says: "18 assertion executions across 6 tests (3 Compose assertions per test via helper: assertIsDisplayed and assertDoesNotExist). The tool does not detect Compose testing assertions. This is a known limitation per DESIGN.md."
+        severity: "moderate (known limitation, but still a significant undercount for Compose UI tests)"
+      - signal: "setup_complexity"
+        tool_says: "setupStatements=1, ratio=0"
+        expert_says: "Each test configures Compose content with setContent{} and passes parameters. The setup is non-trivial (composeTestRule.setContent with theme wrapper and component configuration). 1 setup statement seems like an undercount but is acceptable given the DSL-style setup."
+        severity: "minor (Compose DSL setup is hard to count as discrete statements)"

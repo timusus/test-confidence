@@ -1,0 +1,257 @@
+# Calibration: DuckDuckGo Android
+# Codebase: /tmp/duckduckgo-android
+# Date: 2026-03-21
+# Tool version: confidence (current main branch)
+#
+# CRASH BUG: The tool panics with a nil pointer dereference when scanning
+# this codebase. The crash occurs in:
+#
+#   internal/parse/kotlin_helpers.go:439  findLambda()
+#     called from:
+#   internal/parse/kotlin_helpers.go:271  ExtractCallTarget()
+#     called from:
+#   internal/analyze/structural.go:101   detectStubAndVerify()
+#
+# Root cause: ExtractCallTarget receives a node of type "infix_expression"
+# (from Mockito-Kotlin's `whenever(...).thenReturn(...)` chained calls).
+# When the first child of the infix_expression is NOT a "call_expression",
+# the variable `callExpr` remains zero-value (model.ASTNode with nil Node
+# field). Control falls through to line 271 where findLambda(callExpr) is
+# called, and findLambda dereferences callExpr.Node at line 439, causing
+# the nil pointer panic.
+#
+# The fix is to add a nil guard in ExtractCallTarget before calling
+# findLambda, e.g.:
+#   if callExpr.Node == nil {
+#       return "", ""
+#   }
+#
+# DuckDuckGo Android is a large Kotlin Android app using Mockito-Kotlin
+# (org.mockito.kotlin) as its primary mocking framework, along with
+# Robolectric for Android framework tests, Turbine for Flow testing,
+# and Espresso for instrumentation tests. The Mockito-Kotlin pattern
+# of `whenever(mock.method()).thenReturn(value)` and `verify(mock).method()`
+# is used throughout and is the pattern that triggers the crash.
+
+annotations:
+  - file: "pir/pir-impl/src/test/java/com/duckduckgo/pir/impl/brokers/PirDataUpdateObserverTest.kt"
+    behavioral: false
+    structural_coupling: high
+    fragile: true
+    mock_placement: mixed
+    notes: >
+      Expert: This is a Mockito-Kotlin heavy lifecycle observer test with 10
+      @Test methods. The class has 6 mock fields: BrokerJsonUpdater (internal),
+      PirWorkHandler (internal), PirFeatureDataCleaner (internal),
+      PirRepository (boundary), CurrentTimeProvider (boundary), PirPixelSender
+      (boundary). Setup stubs 3 mocks via whenever().thenReturn().
+
+      Assertion analysis: There are ZERO output assertions in this entire file.
+      Every test method uses only verify() and verifyNoInteractions() to check
+      behavior. This is a purely interaction-verification test suite.
+
+      Test-by-test breakdown:
+      Test 1 (line 75): 3 verify(..., never()) calls - structural only.
+      Test 2 (line 85): 1 whenever stub + 1 whenever sequential stub + 3
+        verify calls - structural only.
+      Test 3 (line 100): 1 whenever stub + 3 verify/never() calls - structural.
+      Test 4 (line 116): 1 whenever stub + 1 verify(times(1)) + 1
+        verifyNoInteractions - structural only.
+      Test 5 (line 132): 3 verify(..., never()) calls - structural only.
+      Test 6 (line 141): 1 whenever stub + 2 verify + 1 verifyNoInteractions
+        - structural only.
+      Test 7 (line 153): 2 whenever stubs + 1 verify with specific arg -
+        structural only.
+      Test 8 (line 165): 2 whenever stubs + 1 verify(..., never()) with any()
+        - structural only.
+      Test 9 (line 177): 2 whenever stubs + 2 verify calls - structural only.
+      Test 10 (line 190): 2 whenever stubs + 2 verify(..., never()) calls -
+        structural only.
+
+      Total assertions: 0 output assertions, ~20 verify/verifyNoInteractions
+      calls. All 10 methods are structural (verify-only). The test verifies
+      interactions (was cancelWork called? was removeAllData called? was update
+      called?) rather than checking any output state. The MutableStateFlow
+      (canRunPirFlow) drives the SUT but no flow emissions are asserted.
+
+      This is a textbook example of high structural coupling: every test is
+      verify-only, testing internal orchestration rather than observable
+      outcomes. Tests would break if the observer's internal coordination
+      changes even if the end behavior is preserved.
+
+      Mock placement: PirRepository and CurrentTimeProvider are boundary
+      (data store and system clock). BrokerJsonUpdater, PirWorkHandler,
+      PirFeatureDataCleaner, and PirPixelSender are internal collaborators
+      (use cases / handlers). The mix is ~50/50 boundary/internal.
+
+      Classification: structural=10, behavioral=0. Fragile=true because all
+      tests are verify-only with no output assertions.
+    tool_agrees: false
+    disagreements:
+      - signal: "crash"
+        tool_says: "panic: nil pointer dereference in findLambda (kotlin_helpers.go:439) via ExtractCallTarget (kotlin_helpers.go:271) via detectStubAndVerify (structural.go:101). Mockito-Kotlin whenever().thenReturn() infix expressions cause callExpr to remain nil."
+        expert_says: "File should analyze as: 0 output assertions, 10 structural/verify-only methods, 0 behavioral methods, high structural coupling, ~20 verify calls, 6 mock fields. All tests are verify-only (zero output assertions in the entire file)."
+        severity: "blocker (tool crashes, produces no output)"
+
+  - file: "js-messaging/js-messaging-impl/src/test/java/com/duckduckgo/js/messaging/impl/RealJsMessageHelperTest.kt"
+    behavioral: true
+    structural_coupling: none
+    fragile: false
+    mock_placement: none
+    notes: >
+      Expert: This is a Robolectric test with 3 @Test methods testing
+      JavaScript message formatting. Uses @RunWith(AndroidJUnit4::class) for
+      Robolectric. No mocks at all -- the WebView is a real Android WebView
+      instantiated via InstrumentationRegistry, and RealJsMessageHelper is
+      the real implementation. Robolectric's Shadows.shadowOf(webView) is
+      used to inspect the last evaluated JavaScript string.
+
+      Test-by-test breakdown:
+      Test 1 (line 26): Sends a SubscriptionEvent, then assertEquals on the
+        JavaScript string output. 1 assertion.
+      Test 2 (line 48): Sends a Success JsRequestResponse, assertEquals on
+        JS output. 1 assertion.
+      Test 3 (line 71): Sends an Error JsRequestResponse, assertEquals on
+        JS output. 1 assertion.
+
+      Total assertions: 3 assertEquals calls. All are Strong strength (exact
+      string equality on output). Zero mocks, zero stubs, zero verify calls.
+      This is purely behavioral testing: construct input, call method, assert
+      output matches expected string.
+
+      Mock placement: N/A (no mocks). The WebView is a real object under
+      Robolectric. The shadow is used for observation, not for stubbing.
+
+      Classification: behavioral=3, structural=0. No structural coupling.
+      Not fragile -- tests only break if the output format changes, which is
+      the contract being tested.
+    tool_agrees: false
+    disagreements:
+      - signal: "crash"
+        tool_says: "panic: nil pointer dereference in findLambda (kotlin_helpers.go:439). The crash occurs during whole-project scan; even though this file has no Mockito patterns, the tool crashes before producing output for any file."
+        expert_says: "File should analyze as: 3 assertEquals assertions (all Strong, Output target), 3 behavioral methods, 0 structural methods, 0 mocks, 0 verify calls, no structural coupling, outputInteractionRatio=1.0."
+        severity: "blocker (tool crashes, produces no output)"
+
+  - file: "new-tab-page/new-tab-page-impl/src/test/java/com/duckduckgo/newtabpage/impl/settings/ConfigurableNewTabPageViewModelTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: boundary
+    notes: >
+      Expert: ViewModel test with 6 @Test methods using Turbine for Flow
+      testing and Mockito-Kotlin for stubbing. Three mock fields:
+      NewTabPageSectionProvider (boundary - data provider), NewTabPixels
+      (boundary - analytics), LifecycleOwner (boundary - Android framework).
+
+      Test-by-test breakdown:
+      Test 1 (line 55): Stubs sectionProvider with empty list, collects
+        viewState via Turbine's test{}, asserts isEmpty(), assertFalse(loading),
+        assertTrue(showDax). 3 output assertions. Behavioral.
+      Test 2 (line 68): Stubs with 3 sections including FAVOURITES, asserts
+        size==3, loading==false, showDax==false. 3 output assertions. Behavioral.
+      Test 3 (line 89): Stubs with 3 sections including SHORTCUTS, asserts
+        size==3, loading==false, showDax==false. 3 output assertions. Behavioral.
+      Test 4 (line 110): Stubs with 2 sections (no FAVOURITES/SHORTCUTS),
+        asserts size==2, loading==false, showDax==true. 3 output assertions.
+        Behavioral.
+      Test 5 (line 130): Stubs with 4 sections, asserts isNotEmpty,
+        size==4, loading==false, showDax==false. 4 output assertions. Behavioral.
+      Test 6 (line 155): Calls onCustomisePageClicked(), verify(pixels)
+        .fireCustomizePagePressedPixel(). 1 verify call, 0 output assertions.
+        Structural (verify-only).
+
+      Total: 16 output assertions (assertTrue/assertFalse), 1 verify call.
+      5 behavioral methods, 1 structural (verify-only) method.
+
+      The test uses FakeEnabledSectionPlugin (a fake, not a mock) for section
+      data, which is good practice. Stubs are via whenever().thenReturn() on
+      sectionProvider. Assertions check ViewModel state emissions via Turbine,
+      which is behavioral output testing. Only test 6 is structural.
+
+      Mock placement: All 3 mocks are boundary-level (provider interface,
+      pixel tracker, lifecycle). No internal mocks.
+
+      Structural coupling is low: only 1 of 6 tests uses verify, and even
+      that one (pixel verification) is arguably a legitimate side-effect
+      check for analytics. Not fragile overall.
+    tool_agrees: false
+    disagreements:
+      - signal: "crash"
+        tool_says: "panic: nil pointer dereference in findLambda (kotlin_helpers.go:439). Mockito-Kotlin whenever().thenReturn() triggers the crash in ExtractCallTarget when processing infix expressions."
+        expert_says: "File should analyze as: 16 output assertions, 1 verify call, 5 behavioral methods, 1 structural method, low structural coupling, outputInteractionRatio ~0.94, 3 boundary mocks."
+        severity: "blocker (tool crashes, produces no output)"
+
+  - file: "app/src/androidTest/java/com/duckduckgo/espresso/RequestBlocklistTest.kt"
+    behavioral: true
+    structural_coupling: none
+    fragile: false
+    mock_placement: none
+    notes: >
+      Expert: This is an Espresso instrumentation test (androidTest) with
+      1 @Test method annotated with @InternalPrivacyTest. It tests request
+      blocking behavior end-to-end by navigating a real BrowserActivity to
+      a privacy test page and checking the results.
+
+      The test:
+      1. Launches BrowserActivity via activityScenarioRule.
+      2. Calls preparationsForPrivacyTest() for setup.
+      3. Finds the real WebView from the activity.
+      4. Uses Espresso onView() to type a URL into the omnibar and navigate.
+      5. Waits for page load via WebViewIdlingResource and JsObjectIdlingResource.
+      6. Extracts window.results via Espresso Web.onWebView().perform(Atoms.script()).
+      7. Parses the JSON result and asserts:
+         - assertEquals on overall status == "success" (1 assertion)
+         - forEach over results: assertEquals on each result.expected vs
+           result.actual (N assertions at runtime, 1 assertion call site)
+
+      Total assertion call sites: 2 assertEquals calls. At runtime, the
+      forEach produces one assertion per test result from the page. Both are
+      Strong strength (exact equality). Zero mocks, zero stubs, zero verify
+      calls. This is a pure end-to-end behavioral test.
+
+      No mocks or test doubles of any kind. The WebView, BrowserActivity,
+      and privacy protections are all real. IdlingResources are test
+      infrastructure for synchronization, not test doubles.
+
+      Classification: behavioral=1 (1 test method), structural=0.
+      No structural coupling. Not fragile -- tests real browser behavior.
+      This is an integration/E2E test, not a unit test.
+    tool_agrees: false
+    disagreements:
+      - signal: "crash"
+        tool_says: "panic: nil pointer dereference in findLambda (kotlin_helpers.go:439). While this specific file has no Mockito patterns, the crash occurs during the whole-project scan on other files, preventing any output."
+        expert_says: "File should analyze as: 2 assertion call sites (both assertEquals, Strong, Output target), 1 behavioral method, 0 structural methods, 0 mocks, no structural coupling. Note: this is an androidTest (instrumentation) file, which may or may not be included in the scan depending on test file discovery patterns."
+        severity: "blocker (tool crashes, produces no output)"
+
+  - file: "httpsupgrade/httpsupgrade-impl/src/test/java/com/duckduckgo/httpsupgrade/impl/HttpsBloomFilterSpecJsonTest.kt"
+    behavioral: true
+    structural_coupling: none
+    fragile: false
+    mock_placement: none
+    notes: >
+      Expert: This is a minimal pure behavioral test with 1 @Test method.
+      It tests JSON deserialization of HttpsBloomFilterSpec using Moshi
+      (a JSON parsing library, not a mock framework).
+
+      The single test:
+      1. Creates a Moshi instance and adapter for HttpsBloomFilterSpec.
+      2. Parses a hardcoded JSON string via a helper method json().
+      3. Asserts 3 fields on the parsed result:
+         - assertEquals(2858372, result.totalEntries) - Strong, exact int
+         - assertEquals(0.0001, result.errorRate, 0.00001) - Strong, float
+           with delta
+         - assertEquals("932ae...", result.sha256) - Strong, exact string
+
+      Total assertions: 3 assertEquals calls, all Strong strength, all
+      Output target. Zero mocks, zero stubs, zero verify calls. No test
+      doubles of any kind. This is the simplest possible behavioral test
+      pattern: parse input, assert output fields.
+
+      Classification: behavioral=1, structural=0. No structural coupling.
+      Not fragile. The test only breaks if the JSON parsing contract changes.
+    tool_agrees: false
+    disagreements:
+      - signal: "crash"
+        tool_says: "panic: nil pointer dereference in findLambda (kotlin_helpers.go:439). The crash occurs during whole-project scan on other files containing Mockito-Kotlin patterns, preventing output for all files including this simple one."
+        expert_says: "File should analyze as: 3 assertEquals assertions (all Strong, Output target), 1 behavioral method, 0 structural methods, 0 mocks, no structural coupling, outputInteractionRatio=1.0."
+        severity: "blocker (tool crashes, produces no output)"

@@ -1,0 +1,6 @@
+placement:
+  boundary:
+    - "*Gateway"
+    - "*Adapter"
+thresholds:
+  god_test_class: 30

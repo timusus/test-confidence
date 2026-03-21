@@ -1,0 +1,7 @@
+/confidence
+*.exe
+.DS_Store
+.idea/
+*.iml
+.vscode/
+/build/

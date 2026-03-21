@@ -1,0 +1,132 @@
+# RxSwift calibration — 5 test files from /tmp/RxSwift/Tests/RxSwiftTests
+# Tool run: ./confidence scan /tmp/RxSwift/Tests --platform ios --json
+
+annotations:
+  - file: "RxSwiftTests/Observable+MapTests.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Expert: Pure behavioral tests for the map operator. Each test sets up a hot
+      observable with known marble values, applies map, and asserts the output events
+      match expected values. TestScheduler + createHotObservable are test infrastructure
+      (virtual time fakes), not mocks of collaborators. Every assertion is on output
+      data (events, subscriptions). Zero interaction verification. These tests would
+      survive any internal refactoring of the map operator as long as the observable
+      contract is preserved. The TRACE_RESOURCES tests (testMapReleasesResourcesOnComplete
+      etc.) are resource-leak smoke tests with no assertions — flagged correctly.
+    tool_agrees: true
+    disagreements:
+      - signal: assertion_strength
+        detail: |
+          Tool rates all 26 assertions as "Strong". This is correct —
+          XCTAssertEqual on event sequences is a strong equality check.
+      - signal: zero_assertion_methods
+        detail: |
+          Tool correctly flags 3 TRACE_RESOURCES methods as zero-assertion.
+          These are conditional-compilation tests that check for memory leaks
+          by subscribing and letting the dispose happen. They ARE legitimate
+          tests (leak detection), but the tool is right that they have no assertions
+          in the static analysis sense. Acceptable.
+
+  - file: "RxSwiftTests/Observable+ScanTests.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Expert: Identical pattern to MapTests — marble-based tests for scan/scan(into:).
+      Tests cover: never, empty, return, throw, accumulator-throws, and multi-element
+      sequences. All assertions verify output event sequences against expected values.
+      No mocks, no interaction verification. Tests the observable contract, not
+      implementation. Would survive refactoring.
+    tool_agrees: true
+    disagreements:
+      - signal: zero_assertion_methods
+        detail: |
+          Same TRACE_RESOURCES pattern as MapTests. 3 methods flagged correctly.
+
+  - file: "RxSwiftTests/DisposeBagTest.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Expert: Tests DisposeBag's lifecycle management. Uses a simple hand-written
+      TestDisposable (counter-based fake) at the bottom of the file. Tests verify
+      that dispose() is called exactly once when the bag is released. This is
+      behavioral — it tests the observable side effect (disposal count), not internal
+      wiring. The TestDisposable is a hand-rolled fake, not a mock framework double.
+      Setup is minimal and proportional. Tests would survive internal DisposeBag
+      refactoring as long as the disposal contract is maintained.
+    tool_agrees: true
+    disagreements:
+      - signal: assertion_strength
+        detail: |
+          Tool classifies all 26 assertions as "Medium" (XCTAssert with boolean
+          expression). I'd argue these are effectively strong — they compare
+          disposable.count against an expected integer. The tool is technically
+          correct that XCTAssert(x == 0) is weaker than XCTAssertEqual(x, 0)
+          for failure messages, but semantically they're equivalent. Minor quibble.
+      - signal: doubles_detection
+        detail: |
+          Tool reports 0 doubles. The file contains a private TestDisposable class
+          (a hand-rolled fake) that the tool doesn't detect. This is a detection
+          gap for hand-rolled test doubles defined in the test file itself.
+          Severity: low — it doesn't affect the behavioral/structural classification.
+
+  - file: "RxSwiftTests/BehaviorSubjectTest.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Expert: Complex but purely behavioral tests for BehaviorSubject. Tests verify
+      the observable contract across multiple subscribers with different subscription
+      windows. Uses TestScheduler for virtual time, createHotObservable for inputs,
+      and createObserver for capturing outputs. All assertions are on observed events.
+      The test_hasObservers* tests verify a public API property. No mocks, no
+      interaction verification. Setup is complex (scheduler scheduling) but
+      proportional to the complexity of multi-subscriber behavior being tested.
+    tool_agrees: true
+    disagreements:
+      - signal: assertion_strength
+        detail: |
+          Tool reports 9 Medium + 12 Strong. The "Medium" ones are likely the
+          XCTAssertTrue/XCTAssertFalse calls in hasObservers tests. This split
+          is reasonable — boolean assertions are inherently less specific than
+          equality assertions on event sequences.
+
+  - file: "RxSwiftTests/SubjectConcurrencyTest.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Expert: Tests subject reentrancy — whether sending events from within an
+      onNext handler causes deadlocks. Uses createSubject() factory pattern for
+      polymorphic testing across PublishSubject, BehaviorSubject, and ReplaySubject.
+      Only 2 assertions (XCTAssertTrue(ranAll)) — the real test is "does this
+      complete without deadlocking." This is inherently behavioral — testing the
+      threading contract of the subject. Uses @testable import for RxMutableBox.
+      No mocks. The test IS slightly fragile in that it depends on synchronous
+      reentrancy behavior, but this is testing a concurrency guarantee, not
+      implementation structure.
+    tool_agrees: true
+    disagreements:
+      - signal: assertion_count
+        detail: |
+          Tool reports 2 assertions for 2 test methods. This is technically correct
+          but misses the key signal: these tests primarily verify "no deadlock"
+          which is implicit (test completes at all). The 2 XCTAssertTrue calls
+          are secondary verification. The tool can't detect implicit deadlock-avoidance
+          testing, which is reasonable.
+      - signal: unclassified_statements
+        detail: |
+          12 unclassified statements. These are the reentrancy setup code (state
+          machine, subscribe closures, event sending). The tool doesn't miscount
+          these, but the ratio of setup to assertions (12:2) could trigger a
+          false "high setup complexity" signal in a more aggressive analysis.
+          Currently the tool reports 0 setup statements (since there's no
+          formal setUp method), which is slightly misleading.

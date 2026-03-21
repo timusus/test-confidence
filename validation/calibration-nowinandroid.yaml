@@ -1,0 +1,160 @@
+# Calibration: Now in Android
+# Codebase: /tmp/nowinandroid
+# Platform: Android/Kotlin
+# Character: Fakes-only architecture, Compose UI tests, clean architecture layering
+# Date: 2026-03-20
+
+annotations:
+  - file: "core/data/src/test/kotlin/com/google/samples/apps/nowinandroid/core/data/repository/OfflineFirstNewsRepositoryTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: boundary
+    notes: |
+      Exemplary behavioral test. Uses hand-written fakes (TestNewsResourceDao, TestNiaNetworkDataSource,
+      TestTopicDao, TestNotifier) injected at repository boundaries. All assertions check observable
+      output: data flowing through the DAO, version numbers after sync, notification state. Zero
+      verify calls. Tests survive internal refactoring of sync logic as long as the contract holds.
+
+      Tool reports: 18 assertions (14 strong, 4 medium), 100% output-targeted, 0 structural coupling,
+      0 mock density, 0 fakes detected.
+
+      The tool correctly identifies this as behavioral with zero structural coupling. However, fakeCount=0
+      is a miss — there are 5 hand-written fakes (TestNewsResourceDao, TestTopicDao,
+      TestNiaNetworkDataSource, TestNotifier, InMemoryDataStore). The tool does not detect
+      Test*-prefixed classes as fakes. setupStatements=0 is also wrong — the @Before method has 7
+      statements creating and wiring dependencies.
+
+      The 52 unclassified statements are mostly the data transformation chains in test bodies
+      (mapping network models to entities). These are test infrastructure, not a problem.
+    tool_agrees: true
+    disagreements:
+      - signal: "doubles.fakeCount"
+        tool_says: 0
+        expert_says: "5 fakes (TestNewsResourceDao, TestTopicDao, TestNiaNetworkDataSource, TestNotifier, InMemoryDataStore)"
+        severity: medium
+        explanation: "Tool does not detect hand-written Test*-prefixed fake classes. These are constructed directly, not via a mocking framework, so the tool misses them entirely."
+      - signal: "setupComplexity.setupStatements"
+        tool_says: 0
+        expert_says: "7 statements in @Before setup()"
+        severity: low
+        explanation: "Tool fails to count setup statements in the @Before method. The setup creates 5 fakes and wires them into the subject. This is low complexity for a repository test but should not be 0."
+
+  - file: "feature/foryou/impl/src/test/kotlin/com/google/samples/apps/nowinandroid/feature/foryou/impl/ForYouViewModelTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: boundary
+    notes: |
+      ViewModel test using fakes (TestUserDataRepository, TestTopicsRepository, TestNewsRepository,
+      TestSyncManager, TestAnalyticsHelper) and real domain objects (CompositeUserNewsResourceRepository,
+      GetFollowableTopicsUseCase). All assertions check ViewModel's StateFlow output values
+      (onboardingUiState, feedState, isSyncing, deepLinkedNewsResource). Tests drive state changes
+      through the public API (updateTopicSelection, dismissOnboarding, updateNewsResourceSaved)
+      and assert on resulting UI state.
+
+      Tool reports: 28 assertions (26 strong, 1 medium, 1 weak), 100% output-targeted, 0 structural
+      coupling. This is correct — the test is purely behavioral.
+
+      fakeCount=0 is wrong again — there are 5 fakes. setupStatements=0 is wrong — the @Before has
+      a ViewModel constructor call with 6 parameters. The 59 unclassified statements are the
+      backgroundScope.launch collectors and data emission calls, which are test infrastructure for
+      StateFlow testing.
+    tool_agrees: true
+    disagreements:
+      - signal: "doubles.fakeCount"
+        tool_says: 0
+        expert_says: "5 fakes (TestUserDataRepository, TestTopicsRepository, TestNewsRepository, TestSyncManager, TestAnalyticsHelper)"
+        severity: medium
+        explanation: "Same pattern — hand-written fakes with Test* prefix not detected."
+      - signal: "setupComplexity.setupStatements"
+        tool_says: 0
+        expert_says: "1 statement in @Before, but 8 field initializations at class level"
+        severity: low
+        explanation: "Class-level field initializations and @Before method not counted."
+
+  - file: "core/domain/src/test/kotlin/com/google/samples/apps/nowinandroid/core/domain/GetFollowableTopicsUseCaseTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Simple, focused use case test. Uses TestTopicsRepository and TestUserDataRepository fakes.
+      Invokes the use case, emits test data through fakes, asserts on the combined output (list of
+      FollowableTopics with correct follow state and sort order). Only 2 test methods, both purely
+      behavioral.
+
+      Tool reports: 2 assertions (both strong), 100% output, 0 structural coupling. Correct.
+
+      fakeCount=0 is the same miss. 10 unclassified statements are the fake-driving calls
+      (sendTopics, setFollowedTopicIds) — these are essentially test fixture setup within the test
+      body, not assertions.
+    tool_agrees: true
+    disagreements:
+      - signal: "doubles.fakeCount"
+        tool_says: 0
+        expert_says: "2 fakes (TestTopicsRepository, TestUserDataRepository)"
+        severity: medium
+        explanation: "Hand-written fakes not detected."
+
+  - file: "core/datastore/src/test/kotlin/com/google/samples/apps/nowinandroid/core/datastore/NiaPreferencesDataSourceTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Pure behavioral test of the preferences data source. Uses InMemoryDataStore (a fake
+      DataStore implementation) as the only dependency. Tests call methods on the subject
+      (setShouldHideOnboarding, setTopicIdFollowed, setDynamicColorPreference) and assert on
+      the resulting userData Flow output.
+
+      Tool reports: 6 assertions (all medium — assertTrue/assertFalse), 100% output, 0 structural
+      coupling. This is correct.
+
+      The "medium" strength classification for assertTrue/assertFalse is technically accurate
+      (boolean checks are weaker than equality checks) but in this context the assertions are
+      perfectly appropriate — checking boolean flags. This is not a quality concern.
+
+      fakeCount=0 is again wrong (InMemoryDataStore is a fake). setupStatements=0 misses the
+      @Before method.
+    tool_agrees: true
+    disagreements:
+      - signal: "doubles.fakeCount"
+        tool_says: 0
+        expert_says: "1 fake (InMemoryDataStore)"
+        severity: medium
+        explanation: "InMemoryDataStore is a hand-written fake but not detected."
+      - signal: "setupComplexity.setupStatements"
+        tool_says: 0
+        expert_says: "1 statement in @Before"
+        severity: low
+        explanation: "@Before setup method not counted."
+
+  - file: "core/designsystem/src/test/kotlin/com/google/samples/apps/nowinandroid/core/designsystem/ThemeTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Compose theme configuration test using Robolectric. Sets NiaTheme with various parameter
+      combinations (darkTheme, disableDynamicTheming, androidTheme) and asserts that the correct
+      ColorScheme, GradientColors, BackgroundTheme, and TintTheme are applied via composition
+      locals.
+
+      Tool reports: 8 assertions (all medium), 100% output, 0 structural coupling, Compose test
+      detected, Robolectric detected. This is correct.
+
+      The tool correctly identifies this as a Compose test under Robolectric. The 8 detected
+      assertions seem low — each test method calls assertColorSchemesEqual (which has ~23
+      assertEquals calls inside) plus 3 more assertEquals calls, totaling ~26 assertions per
+      test and ~200+ total. The tool only counts 8, likely counting one per test method or
+      only the top-level assertEquals calls, missing the ones inside the helper method.
+
+      This is a significant assertion count undercount for Compose tests that use helper methods.
+    tool_agrees: true
+    disagreements:
+      - signal: "assertions.totalAssertions"
+        tool_says: 8
+        expert_says: "~208 (8 tests x ~26 assertions each, including assertColorSchemesEqual helper)"
+        severity: high
+        explanation: "The tool counts only direct assertEquals calls in test methods, not assertions inside helper methods called from tests. assertColorSchemesEqual contains 23 assertEquals calls but is counted as 0 or 1. This severely undercounts assertion density for well-factored tests."

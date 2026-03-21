@@ -1,0 +1,49 @@
+# Ground truth annotations for calibration.
+# Each entry is a human judgment about a test file's quality characteristics.
+#
+# Fields:
+#   file:                relative path from project root
+#   structural_coupling: high | medium | low  — how coupled to implementation structure?
+#   behavioral:          true | false          — primarily tests behavior (output/state)?
+#   fragile:             true | false          — would break on safe refactoring?
+#   has_anti_patterns:   true | false          — contains sleep, empty, ignored, etc.?
+#   has_tautologies:     true | false          — asserts the same value it stubbed?
+#   mock_placement:      boundary | internal | mixed — where are the mocks pointed?
+#   notes:               free-text explanation of judgment
+annotations:
+  - file: "src/test/kotlin/com/example/UserRepositoryTest.kt"
+    structural_coupling: low
+    behavioral: true
+    fragile: false
+    has_anti_patterns: false
+    has_tautologies: true
+    mock_placement: "boundary"
+    notes: >
+      Mocks ApiClient (a boundary dependency). First test is tautological — stubs a
+      user and asserts the same user back. Second test is properly behavioral, asserts
+      on transformed output. Overall low structural coupling, no verify calls.
+
+  - file: "src/test/kotlin/com/example/UserViewModelTest.kt"
+    structural_coupling: medium
+    behavioral: false
+    fragile: true
+    has_anti_patterns: true
+    has_tautologies: false
+    mock_placement: "internal"
+    notes: >
+      Has a verify-only test (saves user), an ignored test, and Thread.sleep.
+      The verify call makes it structurally coupled. The first test (loads users)
+      is behavioral with output assertions, but the file overall is mixed/structural
+      due to the verify-only test. Mocks UserRepository which is an internal
+      collaborator (not a system boundary).
+
+  - file: "src/androidTest/kotlin/com/example/UserFlowTest.kt"
+    structural_coupling: low
+    behavioral: false
+    fragile: false
+    has_anti_patterns: true
+    has_tautologies: false
+    notes: >
+      Empty test body — the single test method has no assertions or actions.
+      This is an anti-pattern (empty test). Not behavioral since it asserts nothing.
+      Not fragile since there is nothing to break. No mocks present.

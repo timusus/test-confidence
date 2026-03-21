@@ -1,0 +1,296 @@
+# Moya calibration — 5 test files from /tmp/moya/Tests/MoyaTests
+# Tool run: ./confidence scan /tmp/moya --platform ios --json
+#
+# CRITICAL DETECTION GAP: The tool reports 0 test files, 0 test methods.
+# Every file below was completely invisible to the tool.
+#
+# Root cause: Moya uses Quick/Nimble for all tests. Quick specs subclass
+# QuickSpec (not XCTestCase directly), and test methods are defined as
+# it("description") { ... } blocks nested inside describe/context scopes.
+# The tool's test file discovery looks for XCTestCase subclasses and
+# func test*() method signatures — neither pattern exists in Quick specs.
+#
+# What the tool needs to recognize:
+#   - QuickSpec as a test base class (equivalent to XCTestCase)
+#   - it("...") { } as a test method (equivalent to func testFoo())
+#   - describe("...") { } and context("...") { } as organizational scopes
+#   - itBehavesLike("...") as shared example invocations (also test methods)
+#   - Nimble matchers as assertions:
+#       expect(x).to(equal(y))          — strong equality
+#       expect(x).toNot(beNil())        — nil check
+#       expect(x).to(beTrue())          — boolean check
+#       expect(x).to(contain("..."))    — containment check
+#       expect(x) == y                  — operator overload equality
+#       expect(x) != y                  — operator overload inequality
+#       expect(x).to(beOfSameErrorType(y))  — custom matcher
+#       expect(x).to(beIdenticalToResponse(y)) — custom matcher
+#       expect(x).toEventually(equal(y))    — async matcher
+#       expect(x).to(throwAssertion())      — assertion-throws matcher
+
+annotations:
+  - file: "MoyaTests/EndpointSpec.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Expert: 57 it() blocks testing Moya's Endpoint value type. The tool found
+      NOTHING — zero test files, zero methods. This is a complete discovery failure.
+
+      What SHOULD be detected:
+      - Test class: EndpointSpec (QuickSpec subclass), plus 2 QuickConfiguration
+        subclasses (NonUpdatingRequestEndpointConfiguration, ParametersEncodedEndpointConfiguration)
+        that define sharedExamples reused via itBehavesLike().
+      - 57 it() blocks = 57 test methods.
+      - ~120+ Nimble assertions: expect(...).to(equal(...)), expect(...).to(beNil()),
+        expect(...) == ..., expect(...) != ... operators.
+      - Zero mocks or test doubles. All tests create real Endpoint values, call
+        real methods (replacing(task:), urlRequest(), adding(newHTTPHeaderFields:)),
+        and assert on the returned values.
+      - Classification: purely behavioral. Tests verify the Endpoint's public API
+        contract — URL construction, header merging, body encoding, parameter encoding,
+        error cases, and Equatable conformance. No interaction verification whatsoever.
+      - Error path coverage: tests for invalid URLs (.requestMapping), bad parameter
+        encoding (.parameterEncoding), invalid JSON encoding (.encodableMapping).
+        Error assertions use custom Nimble matcher beOfSameErrorType().
+      - Equatable tests (lines 391-666): extensive equality/inequality checks across
+        all Task enum cases. Every test constructs two endpoints and asserts == or !=.
+        These are high-value behavioral tests that protect the Equatable contract.
+      - Conditional compilation: #if !SWIFT_PACKAGE guards 3 throwAssertion() tests
+        that verify debug assertions fire for invalid URLEncoding configurations.
+    tool_agrees: false
+    disagreements:
+      - signal: discovery_failure
+        detail: |
+          Tool reports 0 test files, 0 test methods. The file contains 57 it() blocks
+          with ~120+ assertions across a QuickSpec subclass and 2 QuickConfiguration
+          shared example providers. This is a complete detection failure caused by the
+          tool not recognizing QuickSpec as a test base class or it() as a test method.
+      - signal: classification
+        detail: |
+          Should be classified as 100% behavioral. Every test creates real Endpoint
+          values, calls public API methods, and asserts on returned data. Zero mocks,
+          zero verify calls, zero interaction assertions. These tests are resilient
+          to internal refactoring — they only break if the public Endpoint contract
+          changes.
+      - signal: assertion_detection
+        detail: |
+          Tool should detect Nimble assertions: expect().to(equal()), expect().to(beNil()),
+          expect() == (operator overload), expect() != (operator overload),
+          expect().to(beOfSameErrorType()), expect().to(throwAssertion()).
+          All assertions are strong (equality or type-matching). None are weak.
+
+  - file: "MoyaTests/MoyaProvider+CombineSpec.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: boundary
+    notes: |
+      Expert: 11 it() blocks testing MoyaProvider's Combine publisher integration.
+      The tool found NOTHING.
+
+      What SHOULD be detected:
+      - Test class: MoyaProviderCombineSpec (QuickSpec subclass).
+      - 11 it() blocks = 11 test methods.
+      - ~20+ Nimble assertions including toEventually() async matchers.
+      - Test doubles: MoyaProvider.immediatelyStub is used as a stub closure — this is
+        a framework-provided stub mechanism (network stubbing), not a mock of an internal
+        collaborator. failureEndpointClosure is a test-specific endpoint that returns
+        errors. OHHTTPStubs is used for HTTP-level stubbing in the "reactive provider"
+        and "progress tracking" sections.
+      - Classification: behavioral. Tests verify that requestPublisher() emits correct
+        Response values, correct error types, correct progress values, and respects
+        callback queue configuration. All assertions are on output data (response.data,
+        error types, progress doubles, queue labels). No verify() calls.
+      - The inflight request test (lines 145-187) verifies that two concurrent requests
+        to the same endpoint share a single inflight request — a behavioral contract
+        of the provider, not an implementation detail.
+      - Callback queue tests verify that responses arrive on the expected dispatch queue.
+        This is boundary behavior testing (threading contract).
+      - Mock placement: boundary — OHHTTPStubs stubs HTTP responses at the network
+        boundary. MoyaProvider.immediatelyStub prevents real network calls. These are
+        appropriate boundary-level test doubles.
+      - The entire file is wrapped in #if canImport(Combine) and @available checks.
+    tool_agrees: false
+    disagreements:
+      - signal: discovery_failure
+        detail: |
+          Tool reports 0 test files, 0 test methods. The file contains 11 it() blocks
+          with ~20+ assertions in a QuickSpec subclass. Complete detection failure due
+          to Quick/Nimble blindness.
+      - signal: classification
+        detail: |
+          Should be classified as behavioral. Uses stub closures and OHHTTPStubs at
+          the network boundary (appropriate placement). All assertions verify output
+          data — response content, error types, progress values, callback queue labels.
+          No interaction verification.
+      - signal: doubles_detection
+        detail: |
+          Tool should detect: OHHTTPStubs (HTTP stubbing framework — boundary stub),
+          MoyaProvider.immediatelyStub (stub closure), failureEndpointClosure (test
+          fixture). These are all boundary-appropriate test doubles.
+
+  - file: "MoyaTests/ErrorTests.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Expert: 30 it() blocks exhaustively testing MoyaError's computed properties
+      and NSError bridging. The tool found NOTHING.
+
+      What SHOULD be detected:
+      - Test class: ErrorTests (QuickSpec subclass). Note the misleading filename —
+        "ErrorTests" looks like an XCTest name but it is a QuickSpec.
+      - 30 it() blocks = 30 test methods across 4 describe blocks:
+        (1) response computed variable — 9 tests
+        (2) underlyingError computed variable — 9 tests
+        (3) bridged userInfo dictionary — 9 tests
+        (4) mapping a result with empty data — 2 tests
+        Plus 1 Alamofire response conversion test.
+      - ~45+ Nimble assertions: expect() == (operator), expect().to(beNil()),
+        expect().to(beTruthy()).
+      - Zero mocks or test doubles. Tests construct MoyaError enum values directly
+        and assert on their computed properties (.response, .underlyingError, NSError
+        userInfo bridging). Pure value-type testing.
+      - Classification: purely behavioral. Tests verify the MoyaError enum's public
+        API. Each error case is tested for which computed properties return values
+        vs nil. This is exhaustive case-by-case behavioral verification.
+      - One test (line 231-248) uses XCTFail alongside Nimble, showing the file
+        mixes assertion frameworks. The tool should detect both Nimble expect()
+        and XCTest XCTFail assertions.
+      - Note: uses @testable import Moya (line 5) for internal access to
+        convertResponseToResult function.
+    tool_agrees: false
+    disagreements:
+      - signal: discovery_failure
+        detail: |
+          Tool reports 0 test files, 0 test methods. The file contains 30 it() blocks
+          with ~45+ assertions. Complete detection failure. The filename "ErrorTests"
+          might even pass a naive filename heuristic, but the tool still misses it
+          because the class inherits QuickSpec, not XCTestCase.
+      - signal: classification
+        detail: |
+          Should be classified as 100% behavioral. Every test constructs a MoyaError
+          value and asserts on its computed properties. Zero collaborators, zero mocks,
+          zero side effects. These are pure function tests on an enum type.
+      - signal: assertion_detection
+        detail: |
+          Tool should detect Nimble operator assertions (expect(x) == y) which are
+          used heavily in this file alongside expect().to(beNil()) and
+          expect().to(beTruthy()). Also one XCTFail call mixed in.
+
+  - file: "MoyaTests/NetworkLoggerPluginSpec.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Expert: 10 it() blocks testing NetworkLoggerPlugin's logging output.
+      The tool found NOTHING.
+
+      What SHOULD be detected:
+      - Test class: NetworkLoggerPluginSpec (QuickSpec subclass).
+      - 10 it() blocks = 10 test methods.
+      - ~30+ Nimble assertions: expect(log).to(contain("...")), which is a
+        containment matcher — weaker than equality but appropriate for log output
+        testing where exact format may vary.
+      - Hand-rolled test doubles: TestBodyRequest, TestStreamRequest, TestCurlBodyRequest,
+        TestNilRequest (lines 153-236) — these are hand-rolled fakes implementing
+        the RequestType protocol. They return canned URLRequest values. They are NOT
+        mocks — no verification, no interaction recording. They provide controlled
+        inputs to the plugin under test.
+      - Classification: behavioral. Tests call plugin.willSend() or plugin.didReceive()
+        with controlled inputs and assert on the captured log string output. The
+        customLoggerOutput closure captures log output into a local string variable —
+        this is output capture, not interaction verification.
+      - The tests verify:
+        (1) Request fields are logged (URL, headers, method, body/stream)
+        (2) Response data is logged
+        (3) Error messages are logged (validation errors, serialization errors)
+        (4) cURL representation is formatted correctly
+        (5) Custom formatters (requestData, responseData, entry) are applied
+      - Mock placement: none applicable. The hand-rolled fakes are test inputs
+        (controlled request objects), not collaborator replacements. The plugin's
+        only real dependency is the output closure, which is captured directly.
+    tool_agrees: false
+    disagreements:
+      - signal: discovery_failure
+        detail: |
+          Tool reports 0 test files, 0 test methods. The file contains 10 it() blocks
+          with ~30+ assertions plus 4 hand-rolled RequestType fakes. Complete detection
+          failure.
+      - signal: doubles_detection
+        detail: |
+          Tool should detect the 4 private classes (TestStreamRequest, TestBodyRequest,
+          TestCurlBodyRequest, TestNilRequest) as hand-rolled test doubles. They
+          implement the RequestType protocol with canned return values. These are
+          fakes/stubs, not mocks — appropriate classification would be "hand-rolled
+          stub" or "fake".
+      - signal: assertion_detection
+        detail: |
+          Tool should detect Nimble's expect().to(contain()) and
+          expect().to(containOne(of:)) matchers. The contain() matcher is a
+          substring/containment check — weaker than equality but appropriate for
+          log output verification where exact formatting is not the contract.
+
+  - file: "MoyaTests/Observable+MoyaSpec.swift"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: |
+      Expert: 35 it() blocks testing RxSwift Observable extensions for Moya Response
+      mapping (status code filtering, image/JSON/string/object mapping).
+      The tool found NOTHING.
+
+      What SHOULD be detected:
+      - Test class: ObservableMoyaSpec (QuickSpec subclass).
+      - 35 it() blocks = 35 test methods across 5 describe blocks:
+        (1) status codes filtering — 12 tests (closed range, open range, individual codes)
+        (2) image mapping — 2 tests
+        (3) JSON mapping — 2 tests
+        (4) string mapping — 3 tests
+        (5) object mapping — 16 tests (Decodable, arrays, key paths, empty data,
+            type coercion edge cases)
+      - ~50+ Nimble assertions: expect().to(equal()), expect().to(beTruthy()),
+        expect().toNot(beNil()), expect().notTo(beNil()), expect() == (operator),
+        expect().to(beOfSameErrorType()), expect().to(beAKindOf()).
+      - Zero mocks. Tests create Response objects directly with known data, convert
+        to Observable via .asObservable(), apply the operator under test, and subscribe
+        to capture the output. RxSwift's subscribe is used as a synchronous output
+        capture mechanism, not as a mock.
+      - Classification: purely behavioral. Every test:
+        (a) constructs a Response with known statusCode + data
+        (b) wraps it in an Observable
+        (c) applies the operator under test (filter, mapImage, mapJSON, mapString, map)
+        (d) subscribes and captures the emitted value or error
+        (e) asserts on the captured output
+        This is textbook output-based testing. No interaction verification.
+      - The object mapping section (lines 328-597) is particularly thorough:
+        tests Decodable mapping, array mapping, key-path extraction, empty data
+        handling, and negative cases (Int-to-Bool coercion rejection, String-to-Int
+        rejection, Array-to-String rejection). These are high-value edge case tests.
+      - Error handling tests verify that invalid data produces the correct MoyaError
+        variant (imageMapping, jsonMapping, stringMapping, objectMapping) with the
+        correct nested error type.
+    tool_agrees: false
+    disagreements:
+      - signal: discovery_failure
+        detail: |
+          Tool reports 0 test files, 0 test methods. The file contains 35 it() blocks
+          with ~50+ assertions. Complete detection failure due to Quick/Nimble
+          blindness.
+      - signal: classification
+        detail: |
+          Should be classified as 100% behavioral. Every test constructs known input
+          data, applies a pure transformation, and asserts on the output. Zero mocks,
+          zero side effects, zero interaction verification. These tests would survive
+          any internal refactoring of the Observable extensions as long as the mapping
+          contract is preserved.
+      - signal: assertion_detection
+        detail: |
+          Tool should detect Nimble assertions including the fail() function (used in
+          switch cases to mark unexpected code paths — equivalent to XCTFail). Also
+          uses custom matchers beOfSameErrorType() and beAKindOf() which are
+          type-checking assertions.

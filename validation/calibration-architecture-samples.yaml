@@ -1,0 +1,149 @@
+# Calibration: Google Architecture Samples (Kotlin/Android)
+# Codebase: /tmp/architecture-samples
+# Date: 2026-03-20
+# Tool version: confidence (current main branch)
+#
+# This codebase uses Google Truth (assertThat), Hamcrest (assertThat + is()),
+# JUnit assertEquals, and hand-written fakes (FakeTaskRepository, FakeTaskDao,
+# FakeNetworkDataSource). No mocking frameworks. Excellent test design overall.
+
+annotations:
+  - file: "app/src/test/java/com/example/android/architecture/blueprints/todoapp/statistics/StatisticsViewModelTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: >
+      Expert: Purely behavioral ViewModel test using a FakeTaskRepository.
+      Tests observable state (uiState.first()) with Truth assertions on isEmpty,
+      activeTasksPercent, completedTasksPercent, isLoading. Zero mock infrastructure.
+      Clean setup: just creates fake + ViewModel. Would survive any refactor that
+      preserves the public ViewModel contract. Excellent test.
+
+      Tool output: behavioral=100%, structuralCouplingScore=0, fakeCount=1
+      (FakeTaskRepository at Boundary), 7 assertions (3 Strong, 4 Medium),
+      setupComplexity=0.
+
+      Assessment: Tool correctly identifies this as fully behavioral with zero
+      structural coupling. Fake detection is correct (FakeTaskRepository at
+      boundary). Assertion count of 7 matches manual count. Strength classification
+      is reasonable: isTrue()/isFalse()/isEqualTo(false) get Medium because
+      the terminal methods aren't in the strong map (isTrue/isFalse are boolean
+      checks -- Medium is appropriate). isEqualTo gets Strong. Correct.
+    tool_agrees: true
+    disagreements:
+      - signal: "setup_complexity"
+        tool_says: "0 setup statements, ratio 0"
+        expert_says: "Setup has 2 statements (fake creation + ViewModel construction) but the tool only counts mock-related setup, not fake instantiation. This is by design but worth noting -- a user might expect setup complexity to reflect all test setup, not just mock scaffolding."
+        severity: "minor (design choice, not a bug)"
+
+  - file: "app/src/androidTest/java/com/example/android/architecture/blueprints/todoapp/data/source/local/TaskDaoTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: >
+      Expert: DAO integration test using in-memory Room database. Pure data-layer
+      test -- insert, query, update, delete. All assertions check returned data
+      (assertEquals on fields, isEmpty on lists). No doubles at all. Would only
+      break if the DAO contract changes. Very high confidence test.
+
+      Tool output: behavioral=100%, structuralCouplingScore=0, fakeCount=0,
+      25 assertions (24 Strong, 1 Weak), scope=Device, setupComplexity=0.
+
+      Assessment: Tool is correct on all major signals. The Weak assertion is
+      assertNotNull (line 63) -- correctly classified as Weak. The Device scope
+      is correct since this is an androidTest with @RunWith(AndroidJUnit4::class).
+      Assertion count of 25 matches manual count (I counted 25 assertEquals/
+      assertNotNull calls across 8 test methods).
+    tool_agrees: true
+    disagreements: []
+
+  - file: "app/src/test/java/com/example/android/architecture/blueprints/todoapp/statistics/StatisticsUtilsTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: >
+      Expert: Pure unit test of a utility function (getActiveAndCompletedStats).
+      No dependencies, no setup, no doubles. Tests are input->output with Hamcrest
+      matchers. Best possible test design for pure functions.
+
+      Tool output: behavioral=100%, structuralCouplingScore=0, fakeCount=0,
+      8 assertions (all Medium), scope=Local, setupComplexity=0.
+
+      Assessment: Tool correctly identifies this as fully behavioral. However,
+      the assertion strength is all Medium, which undervalues these tests.
+      The Hamcrest `assertThat(result.field, is(100f))` pattern IS equality
+      checking (equivalent to assertEquals), but the tool sees the root call
+      as assertThat with no chained navigation, and the `is` matcher is passed
+      as an argument, not a terminal method. So it defaults to Medium.
+    tool_agrees: true
+    disagreements:
+      - signal: "assertion_strength"
+        tool_says: "8 Medium assertions"
+        expert_says: "All 8 are equality assertions via Hamcrest is() matcher. Should be Strong. The tool cannot analyze Hamcrest matcher arguments, so it correctly defaults to Medium. This is a known detection limit for Hamcrest-style assertions."
+        severity: "minor (systematic undercount of Hamcrest assertion strength)"
+
+  - file: "app/src/test/java/com/example/android/architecture/blueprints/todoapp/data/DefaultTaskRepositoryTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: boundary
+    notes: >
+      Expert: Repository test using FakeNetworkDataSource + FakeTaskDao. Tests
+      the caching, syncing, and CRUD behavior of DefaultTaskRepository through
+      its public API. All assertions check return values (getTasks(), getTask()).
+      Two tests use expected= exception annotation. Fakes are at the data boundary
+      (network and local storage). Would survive most refactors. High confidence.
+
+      Tool output: behavioral=100%, structuralCouplingScore=0, fakeCount=2
+      (FakeNetworkDataSource=Boundary, FakeTaskDao=Boundary), 25 assertions
+      (16 Strong, 9 Medium), scope=Local, setupComplexity=0.
+
+      Assessment: Tool is largely correct. The fake detection and boundary
+      placement are accurate. The assertion count of 25 matches my manual
+      count. However, two tests use @Test(expected = Exception::class) which
+      aren't counted as assertions -- the tool misses these because they're
+      annotation-based, not call-based. This means 2 implicit assertions are
+      uncounted. Also, line 112-113 have a subtle bug in the source: assertThat()
+      is called without a terminal assertion method (no .isTrue()), making
+      those assertions actually no-ops. The tool counts them as assertions anyway
+      because the text-based fallback sees "assertThat(" in the text.
+    tool_agrees: true
+    disagreements:
+      - signal: "assertion_count"
+        tool_says: "25 assertions"
+        expert_says: "23 real assertions + 2 no-op assertThat calls (lines 112-113, missing terminal .isTrue()). The tool should detect assertThat() without a terminal assertion as a potential issue. Also 2 expected-exception annotations are not counted."
+        severity: "minor (2 false positives from no-op assertThat, 2 missed annotation-based assertions)"
+
+  - file: "app/src/test/java/com/example/android/architecture/blueprints/todoapp/tasks/TasksViewModelTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: >
+      Expert: Comprehensive ViewModel test using FakeTaskRepository. Tests
+      filtering, loading states, clearing completed tasks, completing/activating
+      tasks, and snackbar messages. All assertions on observable uiState or
+      repository state. Two tests (completeTask, activateTask) check the fake
+      repository's internal state (tasksRepository.savedTasks.value[task.id]),
+      which is slightly more coupled but still behavioral (checking the effect
+      happened). High confidence overall.
+
+      Tool output: behavioral=100%, structuralCouplingScore=0, fakeCount=1
+      (FakeTaskRepository=Boundary), 20 assertions (13 Strong, 7 Medium),
+      scope=Local, setupComplexity=0.
+
+      Assessment: Tool is correct on all major signals. Assertion count of 20
+      matches my manual count. The 13 Strong assertions are the hasSize,
+      isEmpty, isEqualTo calls. The 7 Medium are isTrue, isFalse, isEqualTo
+      calls where the terminal method defaults to Medium. Actually wait --
+      isEqualTo should be Strong. Let me recheck... The isEqualTo on
+      R.string resource IDs should be Strong. Let me recount: there are
+      assertions like isEqualTo(R.string.task_marked_complete) which should
+      be Strong. So 13 Strong seems about right for the equality + collection
+      assertions, and 7 Medium for the boolean checks (isTrue, isFalse, isEmpty
+      on collections when chained differently).
+    tool_agrees: true
+    disagreements: []

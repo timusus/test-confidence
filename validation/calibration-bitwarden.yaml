@@ -1,0 +1,276 @@
+# Calibration: Bitwarden Android (Kotlin/Android)
+# Codebase: /tmp/bitwarden-android
+# Date: 2026-03-21
+# Tool version: confidence (current main branch)
+#
+# This codebase uses MockK (every/coEvery/verify/coVerify/mockk/slot/capture),
+# JUnit 5 Jupiter (assertEquals, assertNull, assertTrue, assertFalse, @Test),
+# Turbine (flow.test { awaitItem() }), Compose UI testing
+# (composeTestRule, onNodeWithText, assertIsDisplayed, performClick),
+# Robolectric (@Config, BaseRobolectricTest), and hand-written fakes
+# (FakeLifecycleOwner, FakeDispatcherManager). Large Android app with
+# multi-module Gradle structure (app, ui, data, authenticator, testharness).
+
+annotations:
+  - file: "ui/src/test/kotlin/com/bitwarden/ui/platform/manager/exit/ExitManagerTest.kt"
+    behavioral: false
+    structural_coupling: high
+    fragile: true
+    mock_placement: internal
+    notes: >
+      Expert: Tiny test (28 lines, 1 test method) for ExitManager. Mocks
+      Activity, stubs finishAndRemoveTask() to run, calls exitApplication(),
+      then verify(exactly=1) { activity.finishAndRemoveTask() }. This is a
+      textbook verify-only test: it asserts HOW the method works (calls
+      finishAndRemoveTask) rather than WHAT it produces. There is no output
+      assertion. The test is structurally coupled to the implementation -- if
+      ExitManagerImpl changes to use finish() instead of finishAndRemoveTask(),
+      the test breaks even though the behavior (exit the app) is preserved.
+      Activity is an Android framework class, not a boundary dependency, so
+      mock placement is internal (mocking the framework itself).
+
+      Tool output: totalAssertions=0, behavioralMethods=0, structuralMethods=1,
+      1 VerifyOnlyTest finding, mockDensity=0.25, structuralCouplingScore=30,
+      scope=Local.
+
+      Assessment: Tool correctly identifies this as structural (0 behavioral,
+      1 structural method). The VerifyOnlyTest finding is accurate -- this test
+      has zero output assertions and only uses verify. structuralCouplingScore
+      of 30 is appropriate for a fully verify-only file. However, the doubles
+      detection is incomplete: the tool reports mockDensity=0.25 but does not
+      list any doubles in the doubles array. The Activity mock is created via
+      mockk { every { ... } just runs } at the class level and should appear
+      as a detected double. Also, mock placement should be flagged as internal
+      (Activity is a framework class, not a boundary type), but the tool does
+      not report placement at all for this file.
+    tool_agrees: true
+    disagreements:
+      - signal: "doubles_detection"
+        tool_says: "mockDensity=0.25 but no doubles listed in the doubles array"
+        expert_says: "Activity mock is declared at class level via mockk<Activity> { }. Should appear as a double with typeName=Activity, usage=Verified, placement=Internal. The doubles array is empty despite mockDensity being nonzero."
+        severity: "moderate (mock exists and is counted for density but not enumerated)"
+      - signal: "mock_placement"
+        tool_says: "No placement reported for Activity mock"
+        expert_says: "Activity is an Android framework class, not a boundary dependency. Should be classified as Internal placement. Mocking framework internals is a fragility indicator."
+        severity: "moderate (missing placement signal for framework mock)"
+
+  - file: "ui/src/test/kotlin/com/bitwarden/ui/platform/util/TotpUriUtilsTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: boundary
+    notes: >
+      Expert: Tests the getTotpDataOrNull() extension function on Uri with 9
+      test methods. 7 tests assert null return (invalid inputs), 2 tests assert
+      correct TotpData construction. MockK is used to stub android.net.Uri
+      (which cannot be instantiated in unit tests without Robolectric), making
+      every mock SetupOnly -- no verify calls anywhere. This is a good use of
+      mocking: Uri is a platform boundary type that requires stubbing to provide
+      test inputs. The tests are behavioral: they test what the function returns
+      given specific inputs, not how it calls Uri methods. assertEquals and
+      assertNull are the only assertion types used (JUnit 5 Jupiter).
+
+      Tool output: totalAssertions=9, behavioralMethods=9, structuralMethods=0,
+      outputInteractionRatio=1.0, setupOnlyRatio=1.0, 9 Uri doubles (all
+      SetupOnly/Boundary), mockDensity=0.33, structuralCouplingScore=3.3.
+
+      Assessment: Tool output is accurate. 9 behavioral methods is correct
+      (each @Test method has exactly one assertion). setupOnlyRatio=1.0 is
+      correct (all mocks are only stubbed, never verified). Uri placement as
+      Boundary is correct -- it is an Android platform type used as input data.
+      Assertion strength classification: 7 Weak (assertNull) + 2 Strong
+      (assertEquals with complex TotpData objects) = 9. Tool says 7 Weak +
+      2 Strong, which matches. structuralCouplingScore of 3.3 is appropriate --
+      the small nonzero score reflects mock density without structural usage.
+      One minor note: the tool lists 9 separate Uri doubles (one per test
+      method) because each test creates its own local mockk<Uri>. This is
+      technically correct but verbose.
+    tool_agrees: true
+    disagreements: []
+
+  - file: "data/src/test/kotlin/com/bitwarden/data/manager/appstate/AppStateManagerTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: boundary
+    notes: >
+      Expert: Tests AppStateManagerImpl with 2 test methods (98 lines). Uses
+      Turbine flow testing (.test { awaitItem() }) to verify reactive state
+      transitions. Test 1: appForegroundStateFlow emits BACKGROUNDED (initial),
+      FOREGROUNDED (on start), BACKGROUNDED (on stop) -- uses FakeLifecycleOwner
+      to drive lifecycle events. Test 2: appCreatedStateFlow emits Destroyed
+      (initial), Created(isAutoFill=false) on activity create, Destroyed when
+      all activities destroyed -- uses captured ActivityLifecycleCallbacks via
+      MockK slot/capture. Both tests use assertEquals on awaitItem() which is
+      purely behavioral (testing flow output). The Application mock is only used
+      to capture the callbacks (setupOnly). FakeLifecycleOwner is a hand-written
+      fake. mockkStatic is used for an extension property (createdForAutofill).
+
+      Tool output: totalAssertions=6, behavioralMethods=2, structuralMethods=0,
+      outputInteractionRatio=1.0, fakeCount=1 (FakeLifecycleOwner=Boundary),
+      1 Activity mock (SetupOnly/Boundary), mockDensity=0.14,
+      structuralCouplingScore=0.6, setupComplexity ratio=1.17.
+
+      Assessment: Tool correctly identifies this as fully behavioral. Assertion
+      count of 6 matches manual count: test 1 has 3 assertEquals(awaitItem()),
+      test 2 has 3 assertEquals(awaitItem()). All 6 are classified as Medium
+      strength. However, assertEquals comparing enum values (AppForegroundState.
+      BACKGROUNDED) and data class instances (AppCreationState.Created(isAutoFill
+      =false)) should arguably be Strong (exact equality on meaningful values),
+      not Medium. The tool detects FakeLifecycleOwner correctly as a fake.
+      Application mock is correctly classified as SetupOnly (it is only used
+      to capture callbacks via slot, never verified). The slot/capture pattern
+      is an advanced MockK feature used here to intercept registration --
+      the tool handles this correctly by not flagging it as structural coupling.
+
+      One issue: the tool misses the mockkStatic(Activity::createdForAutofill)
+      in @BeforeEach. This is a static mock of an extension property, which is
+      a form of test double. The tool does not detect mockkStatic as a double
+      declaration. This is a known limitation for static mocking detection.
+    tool_agrees: true
+    disagreements:
+      - signal: "assertion_strength"
+        tool_says: "All 6 assertions classified as Medium strength"
+        expert_says: "assertEquals comparing enum constants and data class instances with specific field values should be Strong. These are exact-match equality assertions on meaningful domain values, not weak existence checks."
+        severity: "minor (systematic underclassification of assertEquals in Turbine test blocks)"
+      - signal: "doubles_detection"
+        tool_says: "2 doubles detected (FakeLifecycleOwner, Activity mock)"
+        expert_says: "3 doubles: FakeLifecycleOwner, Application mock, and mockkStatic(Activity::createdForAutofill). The static mock is used in @BeforeEach/@AfterEach and provides stubbed behavior for the createdForAutofill extension property. Tool does not detect mockkStatic as a double."
+        severity: "moderate (static mocks are a common MockK pattern that affects test coupling analysis)"
+
+  - file: "authenticator/src/test/kotlin/com/bitwarden/authenticator/ui/platform/feature/rootnav/RootNavScreenTest.kt"
+    behavioral: false
+    structural_coupling: high
+    fragile: true
+    mock_placement: internal
+    notes: >
+      Expert: Compose navigation test (314 lines, 11 test methods) for
+      RootNavScreen in the authenticator module. Tests navigation routing:
+      when state changes to Splash/Tutorial/Locked/Unlocked, verify that
+      navController.navigate() is called with the correct route. Also tests
+      onSplashScreenRemoved callback. Uses MutableStateFlow to drive state
+      changes and composeTestRule.runOnIdle { verify { ... } } pattern.
+
+      The test has two distinct patterns:
+      1. Tests with assertTrue/assertFalse on onSplashScreenRemovedCalled
+         (3 tests) -- these are behavioral, testing callback invocation via
+         a boolean flag.
+      2. Tests with verify { navController.navigate(route=X) } (8 tests) --
+         these are structural, verifying that a specific method was called
+         with specific arguments. They test HOW routing works, not WHAT
+         the user sees.
+
+      Of the 11 test methods, 5 are transition tests (e.g., "Splash to
+      Tutorial") that contain ONLY verify calls and no output assertions.
+      The tool correctly identifies these 5 as zeroAssertionMethods.
+
+      Tool output: totalAssertions=7, behavioralMethods=6,
+      structuralMethods=0, unclassifiedMethods=5, 5 zeroAssertionMethods,
+      outputInteractionRatio=1.0, mockDensity=0, structuralCouplingScore=0.
+
+      Assessment: Several disagreements here.
+
+      1. structuralMethods=0 is WRONG. The verify { navController.navigate() }
+      calls in 8 of 11 tests are structural interaction assertions. The tool
+      appears to not detect verify calls inside composeTestRule.runOnIdle { }
+      blocks. This is a significant detection gap -- the verify calls are
+      real and structurally couple the test to navigation implementation.
+
+      2. mockDensity=0 is WRONG. The file creates mockk<RootNavViewModel>,
+      mockk<BiometricsManager>, and uses createMockNavHostController(). These
+      are 3 mock declarations. The tool appears to miss mocks declared at
+      class level with inline every { } blocks.
+
+      3. structuralCouplingScore=0 is WRONG given the heavy verify usage.
+      This should be elevated due to 8 tests containing verify calls.
+
+      4. The 5 zeroAssertionMethods are correctly identified -- these
+      transition tests (lines 165-308) contain only verify blocks and no
+      assertTrue/assertFalse calls.
+
+      5. behavioralMethods=6 overcounts. Only 3 tests are behavioral
+      (the assertTrue/assertFalse callback tests). The other 3 that the tool
+      counts as behavioral actually contain verify calls alongside
+      assertTrue/assertFalse, making them mixed at best.
+
+      6. unclassifiedMethods=5 is better understood as structural --
+      these 5 methods have verify-only behavior but are marked unclassified
+      because the tool does not see the verify calls at all.
+    tool_agrees: false
+    disagreements:
+      - signal: "structural_methods"
+        tool_says: "structuralMethods=0, no structural coupling detected"
+        expert_says: "8 of 11 tests contain verify { navController.navigate(route=X, navOptions=Y) } calls, which are structural interaction assertions. The verify calls are inside composeTestRule.runOnIdle { } blocks, which the tool apparently does not scan for verify patterns."
+        severity: "critical (completely misses structural coupling in Compose test pattern)"
+      - signal: "doubles_detection"
+        tool_says: "mockDensity=0, no doubles detected"
+        expert_says: "File creates 3 mocks: mockk<RootNavViewModel> (line 30), mockk<BiometricsManager> (line 48), createMockNavHostController() (line 36). All are class-level declarations. ViewModel is internal (not a boundary type), BiometricsManager is boundary, NavHostController is framework/internal."
+        severity: "critical (misses all mock declarations in this file)"
+      - signal: "structural_coupling_score"
+        tool_says: "structuralCouplingScore=0"
+        expert_says: "Should be high (30+). 8 of 11 tests use verify calls, 5 tests are verify-only. This file has among the highest structural coupling density of the selected files."
+        severity: "critical (zero score on a heavily structural file)"
+      - signal: "behavioral_methods"
+        tool_says: "behavioralMethods=6"
+        expert_says: "Only 3 tests are purely behavioral (the callback flag tests with assertTrue/assertFalse only). The other 3 counted as behavioral also contain verify calls, making them mixed. The 5 unclassified should be structural."
+        severity: "significant (overcount of behavioral due to missed verify detection)"
+
+  - file: "app/src/test/kotlin/com/x8bit/bitwarden/ui/auth/feature/welcome/WelcomeScreenTest.kt"
+    behavioral: false
+    structural_coupling: moderate
+    fragile: false
+    mock_placement: internal
+    notes: >
+      Expert: Compose UI test (125 lines, 6 test methods) using Robolectric
+      (extends BitwardenComposeTest which extends BaseRobolectricTest). Tests
+      the WelcomeScreen composable. Uses @Config(qualifiers="land") for
+      landscape variant. Has three distinct test patterns:
+
+      1. UI content tests (2 methods): onNodeWithText("Security, prioritized")
+         .assertExists().assertIsDisplayed() -- these are behavioral. They
+         verify what the user sees on screen.
+      2. Event-to-callback tests (2 methods): emit event, assertTrue that
+         callback boolean was set -- behavioral.
+      3. Click-to-action tests (2 methods): performClick(), then
+         verify { viewModel.trySendAction(WelcomeAction.X) } -- structural.
+         These verify that clicking a button sends a specific action to the
+         ViewModel, coupling the test to the action dispatch mechanism.
+
+      Tool output: totalAssertions=10, behavioralMethods=4,
+      structuralMethods=2, strengthDistribution={Medium:10},
+      outputInteractionRatio=0.83, 2 VerifyOnlyTest findings,
+      mockDensity=0.077, isRobolectric=true, structuralCouplingScore=5.
+
+      Assessment: Tool gets the big picture right. It correctly identifies
+      2 structural methods (the click-to-verify tests) and 4 behavioral
+      methods. The 2 VerifyOnlyTest findings correctly flag the click tests
+      at lines 92 and 100. isRobolectric=true is correctly detected.
+
+      Assertion count: Tool says 10. Manual count: assertExists (2) +
+      assertIsDisplayed (4) + assertDoesNotExist (2) + assertTrue (2) = 10.
+      Plus 2 verify calls. The tool correctly counts Compose UI assertions
+      (assertExists, assertIsDisplayed, assertDoesNotExist) as output
+      assertions. This is good -- these are genuine behavioral checks.
+
+      Strength: All 10 classified as Medium. The Compose assertions
+      (assertIsDisplayed, assertExists) are existence/visibility checks
+      and Medium is reasonable. assertTrue on boolean flags is also Medium,
+      which is fair (it is a boolean check, not a rich value comparison).
+
+      structuralCouplingScore=5 is reasonable for a file where 2/6 tests
+      are structural.
+
+      Doubles: mockDensity=0.077 but no doubles listed. The file creates
+      mockk<WelcomeViewModel>(relaxed=true) at line 23. This should be
+      detected and classified as Internal placement (ViewModel is not a
+      boundary type). Missing from doubles array.
+    tool_agrees: true
+    disagreements:
+      - signal: "doubles_detection"
+        tool_says: "mockDensity=0.077 but no doubles listed in doubles array"
+        expert_says: "WelcomeViewModel mock is created at line 23 via mockk<WelcomeViewModel>(relaxed=true). Should appear as typeName=WelcomeViewModel, usage=Verified (it is verified in 2 tests), placement=Internal. The doubles array should not be empty."
+        severity: "moderate (mock exists but not enumerated, placement analysis impossible)"
+      - signal: "assertion_strength"
+        tool_says: "All 10 assertions classified as Medium"
+        expert_says: "Compose UI assertions like assertIsDisplayed() and assertExists() are effectively existence/visibility checks -- comparable to assertNotNull. Could argue these should be Weak rather than Medium. However, Medium is a defensible classification for UI assertions that confirm visible state."
+        severity: "minor (debatable classification of Compose UI assertions)"

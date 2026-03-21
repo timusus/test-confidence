@@ -1,0 +1,178 @@
+# Calibration: Tivi (Kotlin Multiplatform)
+# Codebase: /tmp/tivi
+# Date: 2026-03-20
+# Tool version: confidence (current main branch)
+#
+# This codebase uses assertk (assertThat from assertk.assertThat), kotlin.test
+# (assertFails, @Test, @BeforeTest), Turbine (flow.test { awaitItem() }),
+# and hand-written fakes via an ObjectGraph helper class. KMP project with
+# commonTest source set. No mocking frameworks.
+
+annotations:
+  - file: "data/test/src/commonTest/kotlin/app/tivi/data/dao/EpisodesTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: >
+      Expert: DAO test for episodes table. Tests CRUD operations and cascade
+      delete (deleting a season deletes its episodes). Uses assertk for
+      assertions and kotlin.test assertFails for constraint violation.
+      All assertions verify query results. No doubles -- operates against
+      a real database instance. Very high confidence, purely behavioral.
+
+      Tool output: behavioral=100%, structuralCouplingScore=0, fakeCount=0,
+      5 assertions (2 Strong, 3 Medium), scope=Local, setupComplexity=0.
+
+      Assessment: Assertion count of 5 matches my manual count (4 assertThat
+      chains + 1 assertFails). However, there are strength classification
+      issues:
+      1. assertFails is classified as Medium/Output. It should be Strong/Exception
+         (same as assertFailsWith and assertThrows). The assertFails function
+         IS in the exception-assertion family.
+      2. isNull() from assertk is classified as Medium (default). It should be
+         Weak to match assertNull classification. isNull tests for nullity,
+         same as assertNull which is Weak.
+    tool_agrees: true
+    disagreements:
+      - signal: "assertion_strength"
+        tool_says: "assertFails classified as Medium strength, Output target"
+        expert_says: "assertFails (from kotlin.test) is functionally identical to assertThrows/assertFailsWith. Should be Strong strength, Exception target. Missing from exceptionAssertions map in assertions.go."
+        severity: "moderate (misclassifies exception assertions from kotlin.test)"
+      - signal: "assertion_strength"
+        tool_says: "isNull() classified as Medium strength"
+        expert_says: "assertk's isNull() should be Weak, matching the same tier as assertNull. Currently not in weakAssertions map."
+        severity: "minor (consistent underweight of null-check assertions)"
+
+  - file: "data/test/src/commonTest/kotlin/app/tivi/data/dao/EpisodeWatchEntryTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: >
+      Expert: DAO test for episode watch entries. Tests insert, duplicate
+      constraint, filtered queries (pending send/delete actions), delete,
+      and cascade delete. All assertions verify query results. Uses assertk
+      containsExactly for filtered queries. High confidence.
+
+      Tool output: behavioral=100%, structuralCouplingScore=0, fakeCount=0,
+      6 assertions (3 Strong, 3 Medium), scope=Local, setupComplexity=0.
+
+      Assessment: Assertion count of 6 matches manual count (5 assertThat
+      chains + 1 assertFails). Strong: isEqualTo (1) + containsExactly (2) = 3.
+      Medium: assertFails (1) + isNull (2) = 3. Same issues as EpisodesTest:
+      assertFails should be Exception, isNull should be Weak.
+    tool_agrees: true
+    disagreements:
+      - signal: "assertion_strength"
+        tool_says: "assertFails=Medium/Output, isNull=Medium"
+        expert_says: "Same issues as EpisodesTest: assertFails should be Strong/Exception, isNull should be Weak."
+        severity: "moderate (same systematic issue)"
+
+  - file: "data/test/src/commonTest/kotlin/app/tivi/data/dao/SeasonsTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: none
+    notes: >
+      Expert: DAO test for seasons table. Tests insert, duplicate constraint,
+      ordering (specials always last), delete, and cascade delete from show.
+      The specialsOrder test is particularly valuable -- tests business logic
+      (ordering rule) at the data layer. Uses assertk containsExactly which
+      verifies both content AND order. High confidence.
+
+      Tool output: behavioral=100%, structuralCouplingScore=0, fakeCount=0,
+      5 assertions (2 Strong, 3 Medium), scope=Local, setupComplexity=0.
+
+      Assessment: Assertion count of 5 matches manual count. Strong:
+      isEqualTo (1) + containsExactly (1) = 2. Medium: assertFails (1) +
+      isNull (2) = 3. Same systematic issues with assertFails and isNull
+      classification.
+    tool_agrees: true
+    disagreements:
+      - signal: "assertion_strength"
+        tool_says: "assertFails=Medium/Output, isNull=Medium"
+        expert_says: "Same as other DAO tests: assertFails should be Strong/Exception, isNull should be Weak."
+        severity: "moderate (same systematic issue)"
+
+  - file: "data/test/src/commonTest/kotlin/app/tivi/data/repositories/SeasonsEpisodesRepositoryTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: boundary
+    notes: >
+      Expert: Repository integration test using real database + fake data sources
+      (via ObjectGraph helper). Tests sync operations: initial sync, idempotent
+      sync, deletion of missing items, empty responses, and a Flow-based test
+      using Turbine. The Turbine test (testObserveNextEpisodeToWatch_singleFlow)
+      is particularly interesting -- it tests reactive behavior by watching a
+      Flow, marking an episode as watched, and verifying the next episode
+      updates. All fakes are at the network boundary. High confidence.
+
+      Tool output: behavioral=100%, structuralCouplingScore=0, fakeCount=0,
+      16 assertions (15 Strong, 1 Medium), scope=Local, setupComplexity=0.
+
+      Assessment: The tool reports fakeCount=0, which is WRONG. The test uses
+      multiple fake data sources (traktSeasonsEpisodesDataSource,
+      episodeWatchesDataSource, traktAuthRepository with fake auth) via the
+      ObjectGraph helper. These are all fakes at the network boundary. The tool
+      misses them because they are accessed through a delegated property
+      (objectGraph.traktSeasonsEpisodesDataSource) rather than declared
+      directly in the test file.
+
+      Assertion count: Tool says 16, I count 17. The discrepancy is in the
+      Turbine test block. The .test { } lambda contains 2 assertThat calls
+      but the text-based fallback counts the entire block as a single
+      assertion (it sees one statement containing "assertThat("). This is a
+      Turbine detection issue -- the tool should count individual assertions
+      inside Turbine test blocks.
+
+      The 1 Medium assertion is likely from the Turbine block (text fallback
+      defaults to Medium). The 15 Strong are the direct assertThat chains
+      with containsExactly/isEqualTo/isEmpty.
+    tool_agrees: false
+    disagreements:
+      - signal: "fake_count"
+        tool_says: "fakeCount=0, no doubles detected"
+        expert_says: "Test uses at least 3 fake data sources (FakeSeasonsEpisodesDataSource x2, FakeEpisodeWatchesDataSource) plus fake auth, all at boundary. Tool misses them because they're accessed via ObjectGraph delegated properties, not declared in the test file."
+        severity: "significant (completely misses the test's dependency injection strategy)"
+      - signal: "assertion_count"
+        tool_says: "16 assertions"
+        expert_says: "17 assertions. The Turbine .test { } block contains 2 assertThat calls but the text-based fallback counts the entire block as 1 assertion."
+        severity: "minor (off by 1 due to Turbine lambda nesting)"
+      - signal: "assertion_strength"
+        tool_says: "1 Medium assertion (from Turbine block fallback)"
+        expert_says: "The 2 assertions inside Turbine's .test {} are both isEqualTo (Strong), but the fallback classifies the whole block as Medium."
+        severity: "minor (Turbine assertions get downgraded strength)"
+
+  - file: "data/test/src/commonTest/kotlin/app/tivi/data/repositories/FollowedShowRepositoryTest.kt"
+    behavioral: true
+    structural_coupling: low
+    fragile: false
+    mock_placement: boundary
+    notes: >
+      Expert: Repository test for followed shows sync. Tests sync with
+      server response, empty response (deletes local), different show response
+      (replaces), pending delete, and pending upload scenarios. Uses fakes
+      from ObjectGraph. All assertions check repository output via
+      getFollowedShows(). Well-structured tests with clear arrange-act-assert.
+
+      Tool output: behavioral=100%, structuralCouplingScore=0, fakeCount=1
+      (FakeFollowedShowsDataSource=Boundary), 5 assertions (all Strong),
+      scope=Local, setupComplexity=0.
+
+      Assessment: Tool gets the overall picture right. One disagreement on
+      fake detection: the tool finds 1 fake (FakeFollowedShowsDataSource)
+      but misses traktAuthRepository which is also a fake (constructed with
+      fake auth components in ObjectGraph). The tool only picks up the
+      FakeFollowedShowsDataSource because the test file has a direct
+      property declaration with the Fake-prefixed type name.
+
+      Assertion count of 5 and all-Strong classification are correct:
+      containsExactly (3) + isEmpty (2) = 5 Strong assertions.
+    tool_agrees: true
+    disagreements:
+      - signal: "fake_count"
+        tool_says: "fakeCount=1 (FakeFollowedShowsDataSource only)"
+        expert_says: "At least 2 fakes: FakeFollowedShowsDataSource and the traktAuthRepository (constructed with fake login/refresh/auth). Tool only detects Fake-prefixed type names declared in the test file, missing fakes constructed inside helper classes."
+        severity: "moderate (partial fake detection when using dependency injection helpers)"
