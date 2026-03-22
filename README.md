@@ -1,6 +1,6 @@
 # test-confidence
 
-A CLI tool that analyzes test suite quality through static analysis and git history.
+A CLI tool that analyzes Android & iOS test suite quality through static analysis and git history.
 
 It answers one question: **Do these tests protect this code from breakage, without punishing refactoring?**
 
