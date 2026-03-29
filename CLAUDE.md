@@ -20,7 +20,7 @@ A CLI tool that analyzes test suite quality through static analysis and git hist
 ./confidence scan <path> --compare-ref v1.0  # compare to a git ref
 ./confidence scan <path> --compare old.json  # compare to a saved baseline
 ./confidence scan <path> --config path.yaml  # custom config
-./confidence scan <path> --platform ios      # override platform detection
+./confidence scan <path> --lang swift         # override language detection
 ```
 
 ## Core Concepts
