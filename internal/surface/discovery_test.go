@@ -186,7 +186,7 @@ func TestDiscoverSwiftSurfaces(t *testing.T) {
 		testPaths[i] = f.Path
 	}
 
-	result, err := DiscoverSurfaces(root, testPaths, nil, model.IOS)
+	result, err := DiscoverSurfaces(root, testPaths, nil, model.Swift)
 	if err != nil {
 		t.Fatal(err)
 	}

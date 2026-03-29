@@ -7,12 +7,12 @@ import (
 )
 
 func DefaultConfig() Config {
-	return DefaultConfigForPlatform(model.Android)
+	return DefaultConfigForLanguage(model.Kotlin)
 }
 
-// DefaultConfigForPlatform returns the default configuration with
-// platform-specific placement patterns.
-func DefaultConfigForPlatform(platform model.Platform) Config {
+// DefaultConfigForLanguage returns the default configuration with
+// language-specific placement patterns.
+func DefaultConfigForLanguage(lang model.Language) Config {
 	cfg := Config{
 		Placement: PlacementConfig{
 			Repository: "boundary",
@@ -24,8 +24,8 @@ func DefaultConfigForPlatform(platform model.Platform) Config {
 		Exclude: []string{"**/generated/**", "**/build/**", "**/buildSrc/**"},
 	}
 
-	switch platform {
-	case model.IOS:
+	switch lang {
+	case model.Swift:
 		cfg.Placement.Boundary = ios.BoundaryTypeDefaults
 		cfg.Placement.Internal = ios.InternalTypeDefaults
 		cfg.Placement.BoundaryPackages = ios.BoundaryPackageDefaults

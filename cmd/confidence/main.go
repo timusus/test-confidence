@@ -40,18 +40,18 @@ func main() {
 			}
 			cfg := config.LoadConfig(configPath)
 
-			// Platform override
-			var platformOverride *model.Platform
-			if p, _ := cmd.Flags().GetString("platform"); p != "" {
+			// Language override
+			var langOverride *model.Language
+			if p, _ := cmd.Flags().GetString("lang"); p != "" {
 				switch p {
-				case "android":
-					v := model.Android
-					platformOverride = &v
-				case "ios":
-					v := model.IOS
-					platformOverride = &v
+				case "kotlin":
+					v := model.Kotlin
+					langOverride = &v
+				case "swift":
+					v := model.Swift
+					langOverride = &v
 				default:
-					return fmt.Errorf("unknown platform: %q (use android or ios)", p)
+					return fmt.Errorf("unknown language: %q (use kotlin or swift)", p)
 				}
 			}
 
@@ -79,11 +79,11 @@ func main() {
 
 			// Compare-ref mode: scan a git worktree at the given ref and compare
 			if compareRef != "" {
-				return runCompareRef(args[0], compareRef, cfg, platformOverride)
+				return runCompareRef(args[0], compareRef, cfg, langOverride)
 			}
 
 			// Run scan
-			output, err := scan.Scan(args[0], cfg, platformOverride)
+			output, err := scan.Scan(args[0], cfg, langOverride)
 			if err != nil {
 				return err
 			}
@@ -115,7 +115,7 @@ func main() {
 					trendMonths = 6
 				}
 				var history []report.Snapshot
-				history = buildHistoricalTrend(args[0], cfg, platformOverride, trendMonths)
+				history = buildHistoricalTrend(args[0], cfg, langOverride, trendMonths)
 				// Add current as the latest point
 				current := report.SnapshotFromCurrent(output.Result, output.SurfaceAnalysis)
 				current.Label = "Now"
@@ -222,7 +222,7 @@ func main() {
 	scanCmd.Flags().Int("trend-months", 6, "Number of months of history for HTML trend charts")
 	scanCmd.Flags().Bool("verbose", false, "Show per-file detail")
 	scanCmd.Flags().String("config", "", "Path to .confidence.yaml")
-	scanCmd.Flags().String("platform", "", "Override platform detection (android|ios)")
+	scanCmd.Flags().String("lang", "", "Override language detection (kotlin|swift)")
 	scanCmd.Flags().String("compare", "", "Compare against a baseline JSON file (saved from a previous --json run)")
 	scanCmd.Flags().String("compare-ref", "", "Compare current scan against a git ref (branch, tag, or commit)")
 	scanCmd.Flags().String("since", "", "Compare current scan against a time ago (e.g., 3months, 6weeks, 1year)")
@@ -247,18 +247,18 @@ or specified with --calibration-file.`,
 			}
 			cfg := config.LoadConfig(configPath)
 
-			// Platform override
-			var platformOverride *model.Platform
-			if p, _ := cmd.Flags().GetString("platform"); p != "" {
+			// Language override
+			var langOverride *model.Language
+			if p, _ := cmd.Flags().GetString("lang"); p != "" {
 				switch p {
-				case "android":
-					v := model.Android
-					platformOverride = &v
-				case "ios":
-					v := model.IOS
-					platformOverride = &v
+				case "kotlin":
+					v := model.Kotlin
+					langOverride = &v
+				case "swift":
+					v := model.Swift
+					langOverride = &v
 				default:
-					return fmt.Errorf("unknown platform: %q (use android or ios)", p)
+					return fmt.Errorf("unknown language: %q (use kotlin or swift)", p)
 				}
 			}
 
@@ -279,7 +279,7 @@ or specified with --calibration-file.`,
 
 			// Run scan
 			fmt.Fprintf(os.Stderr, "Scanning %s...\n", args[0])
-			output, err := scan.Scan(args[0], cfg, platformOverride)
+			output, err := scan.Scan(args[0], cfg, langOverride)
 			if err != nil {
 				return err
 			}
@@ -293,7 +293,7 @@ or specified with --calibration-file.`,
 	}
 
 	calibrateCmd.Flags().String("config", "", "Path to .confidence.yaml")
-	calibrateCmd.Flags().String("platform", "", "Override platform detection (android|ios)")
+	calibrateCmd.Flags().String("lang", "", "Override language detection (kotlin|swift)")
 	calibrateCmd.Flags().String("calibration-file", "", "Path to calibration YAML file (default: <path>/.confidence-calibration.yaml)")
 
 	rootCmd.AddCommand(scanCmd)
@@ -372,7 +372,7 @@ func parseTimeSince(since string) (gitDate, human string, err error) {
 
 // runCompareRef creates a git worktree at the given ref, scans it, scans the
 // current path, and writes a comparison report.
-func runCompareRef(scanPath, ref string, cfg config.Config, platformOverride *model.Platform) error {
+func runCompareRef(scanPath, ref string, cfg config.Config, langOverride *model.Language) error {
 	// 1. Find repo root
 	absPath, err := filepath.Abs(scanPath)
 	if err != nil {
@@ -415,7 +415,7 @@ func runCompareRef(scanPath, ref string, cfg config.Config, platformOverride *mo
 
 	// 5. Scan worktree (baseline)
 	fmt.Fprintf(os.Stderr, "Scanning %s at %s...\n", ref, worktreeScanPath)
-	baselineOutput, err := scan.Scan(worktreeScanPath, cfg, platformOverride)
+	baselineOutput, err := scan.Scan(worktreeScanPath, cfg, langOverride)
 	if err != nil {
 		return fmt.Errorf("scanning worktree (%s): %w", ref, err)
 	}
@@ -423,7 +423,7 @@ func runCompareRef(scanPath, ref string, cfg config.Config, platformOverride *mo
 
 	// 6. Scan current
 	fmt.Fprintf(os.Stderr, "Scanning current...\n")
-	currentOutput, err := scan.Scan(scanPath, cfg, platformOverride)
+	currentOutput, err := scan.Scan(scanPath, cfg, langOverride)
 	if err != nil {
 		return fmt.Errorf("scanning current: %w", err)
 	}
@@ -436,7 +436,7 @@ func runCompareRef(scanPath, ref string, cfg config.Config, platformOverride *mo
 // buildHistoricalTrend scans the codebase at monthly intervals going back N months.
 // Returns snapshots oldest-first for use in trend charts. Silently skips months
 // where the worktree can't be created (e.g., subdir didn't exist yet).
-func buildHistoricalTrend(scanPath string, cfg config.Config, platformOverride *model.Platform, months int) []report.Snapshot {
+func buildHistoricalTrend(scanPath string, cfg config.Config, langOverride *model.Language, months int) []report.Snapshot {
 	absPath, err := filepath.Abs(scanPath)
 	if err != nil {
 		return nil
@@ -494,7 +494,7 @@ func buildHistoricalTrend(scanPath string, cfg config.Config, platformOverride *
 		// Suppress stderr during historical scans to avoid contaminating HTML output
 		origStderr := os.Stderr
 		os.Stderr, _ = os.Open(os.DevNull)
-		scanOutput, scanErr := scan.Scan(worktreeScanPath, cfg, platformOverride)
+		scanOutput, scanErr := scan.Scan(worktreeScanPath, cfg, langOverride)
 		os.Stderr = origStderr
 
 		// Clean up immediately

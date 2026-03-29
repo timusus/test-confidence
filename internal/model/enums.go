@@ -18,24 +18,6 @@ func (l Language) String() string {
 	}
 }
 
-type Platform int
-
-const (
-	Android Platform = iota
-	IOS
-)
-
-func (p Platform) String() string {
-	switch p {
-	case Android:
-		return "Android"
-	case IOS:
-		return "iOS"
-	default:
-		return "Unknown"
-	}
-}
-
 type Tier int
 
 const (

@@ -20,8 +20,8 @@ func TestScanEngine(t *testing.T) {
 	if result.TotalTestFiles == 0 {
 		t.Error("expected test files")
 	}
-	if result.Platform != model.Android {
-		t.Error("expected Android platform")
+	if result.Language != model.Kotlin {
+		t.Error("expected Kotlin language")
 	}
 	if len(result.FileResults) == 0 {
 		t.Error("expected per-file results")
@@ -51,15 +51,15 @@ func TestScanEngine(t *testing.T) {
 	}
 }
 
-func TestScanWithPlatformOverride(t *testing.T) {
+func TestScanWithLanguageOverride(t *testing.T) {
 	cfg := config.DefaultConfig()
-	ios := model.IOS
-	output, err := Scan("../../testdata/projects/android-simple", cfg, &ios)
+	swift := model.Swift
+	output, err := Scan("../../testdata/projects/android-simple", cfg, &swift)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if output.Result.Platform != model.IOS {
-		t.Error("expected iOS platform override")
+	if output.Result.Language != model.Swift {
+		t.Error("expected Swift language override")
 	}
 }
 

@@ -49,22 +49,16 @@ type ScanOutput struct {
 }
 
 // Scan orchestrates the full analysis pipeline: discovery, parsing, and analysis.
-// If platformOverride is non-nil, it is used instead of auto-detection.
-func Scan(path string, cfg config.Config, platformOverride *model.Platform) (*ScanOutput, error) {
-	// 1. Detect platform
-	platform := discover.DetectPlatform(path)
-	if platformOverride != nil {
-		platform = *platformOverride
+// If langOverride is non-nil, it is used instead of auto-detection.
+func Scan(path string, cfg config.Config, langOverride *model.Language) (*ScanOutput, error) {
+	// 1. Detect language
+	lang := discover.DetectLanguage(path)
+	if langOverride != nil {
+		lang = *langOverride
 	}
 
-	// 1b. Apply platform-specific defaults for placement patterns
-	cfg.ApplyPlatformDefaults(platform)
-
-	// 2. Determine language from platform
-	lang := model.Kotlin
-	if platform == model.IOS {
-		lang = model.Swift
-	}
+	// 1b. Apply language-specific defaults for placement patterns
+	cfg.ApplyLanguageDefaults(lang)
 
 	// 3. Find test files
 	testFiles, err := discover.FindTestFiles(path, cfg)
@@ -79,14 +73,12 @@ func Scan(path string, cfg config.Config, platformOverride *model.Platform) (*Sc
 	ctx, err := discover.BuildProjectContext(path, cfg)
 	if err != nil {
 		ctx = &model.ProjectContext{
-			Platform:        platform,
 			Language:        lang,
 			DIBoundaryTypes: map[string]bool{},
 			FakeTypes:       map[string]bool{},
 			TypePackages:    map[string]string{},
 		}
 	}
-	ctx.Platform = platform
 	ctx.Language = lang
 
 	// 6. Parse and analyze all files concurrently
@@ -115,7 +107,7 @@ func Scan(path string, cfg config.Config, platformOverride *model.Platform) (*Sc
 	// 7. Aggregate results
 	scanResult := &model.ScanResult{
 		Path:     path,
-		Platform: platform,
+		Language: lang,
 	}
 
 	for i, r := range results {
@@ -209,7 +201,7 @@ func Scan(path string, cfg config.Config, platformOverride *model.Platform) (*Sc
 	}
 
 	var surfaceAnalysis *surface.SurfaceAnalysis
-	sa, surfErr := surface.DiscoverSurfaces(path, testPaths, gitChurn, platform)
+	sa, surfErr := surface.DiscoverSurfaces(path, testPaths, gitChurn, lang)
 	if surfErr != nil {
 		fmt.Fprintf(os.Stderr, "warning: surface discovery skipped: %v\n", surfErr)
 	} else if len(sa.Surfaces) > 0 {

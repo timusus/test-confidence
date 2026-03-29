@@ -219,7 +219,7 @@ var skipDirs = map[string]bool{
 // For iOS: walks non-test .swift files to find Views, ViewControllers, Screens.
 // It cross-references with testFiles to determine which surfaces have tests.
 // If gitChurn is provided, untested surfaces are sorted by churn descending.
-func DiscoverSurfaces(rootPath string, testFiles []string, gitChurn map[string]ChurnInfo, platform ...model.Platform) (*SurfaceAnalysis, error) {
+func DiscoverSurfaces(rootPath string, testFiles []string, gitChurn map[string]ChurnInfo, lang ...model.Language) (*SurfaceAnalysis, error) {
 	var surfaces []Surface
 
 	// Track all production files for untested-complex-file detection.
@@ -232,10 +232,10 @@ func DiscoverSurfaces(rootPath string, testFiles []string, gitChurn map[string]C
 	}
 	var allProdFiles []prodFileInfo
 
-	// Determine platform (default to Android for backward compatibility)
-	plat := model.Android
-	if len(platform) > 0 {
-		plat = platform[0]
+	// Determine language (default to Kotlin for backward compatibility)
+	l := model.Kotlin
+	if len(lang) > 0 {
+		l = lang[0]
 	}
 
 	err := filepath.WalkDir(rootPath, func(path string, d fs.DirEntry, err error) error {
@@ -256,7 +256,7 @@ func DiscoverSurfaces(rootPath string, testFiles []string, gitChurn map[string]C
 		}
 		rel = filepath.ToSlash(rel)
 
-		if plat == model.IOS {
+		if l == model.Swift {
 			// iOS: process .swift files NOT in test directories
 			if !strings.HasSuffix(d.Name(), ".swift") {
 				return nil

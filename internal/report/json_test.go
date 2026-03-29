@@ -21,7 +21,7 @@ func TestJSONReport(t *testing.T) {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 
-	for _, key := range []string{"path", "platform", "totalTestFiles", "fileResults"} {
+	for _, key := range []string{"path", "language", "totalTestFiles", "fileResults"} {
 		if _, ok := parsed[key]; !ok {
 			t.Errorf("missing key: %s", key)
 		}
@@ -29,7 +29,7 @@ func TestJSONReport(t *testing.T) {
 }
 
 func TestJSONReportEmpty(t *testing.T) {
-	result := &model.ScanResult{Path: ".", Platform: model.Android}
+	result := &model.ScanResult{Path: ".", Language: model.Kotlin}
 	var buf bytes.Buffer
 	err := WriteJSONReport(&buf, result, nil, nil, nil)
 	if err != nil {
@@ -111,7 +111,7 @@ func TestJSONReportAggregateStrength(t *testing.T) {
 }
 
 func TestJSONReportAggregateStrengthOmittedWhenEmpty(t *testing.T) {
-	result := &model.ScanResult{Path: ".", Platform: model.Android}
+	result := &model.ScanResult{Path: ".", Language: model.Kotlin}
 	var buf bytes.Buffer
 	err := WriteJSONReport(&buf, result, nil, nil, nil)
 	if err != nil {

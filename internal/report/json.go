@@ -16,7 +16,7 @@ import (
 
 type jsonScanResult struct {
 	Path              string                 `json:"path"`
-	Platform          string                 `json:"platform"`
+	Language          string                 `json:"language"`
 	TotalTestFiles    int                    `json:"totalTestFiles"`
 	TotalTestMethods  int                    `json:"totalTestMethods"`
 	UnparseableFiles  int                    `json:"unparseableFiles,omitempty"`
@@ -335,7 +335,7 @@ func convertSurfaceAnalysis(sa *surface.SurfaceAnalysis) *jsonSurfaceAnalysis {
 func convertScanResult(r *model.ScanResult) jsonScanResult {
 	jr := jsonScanResult{
 		Path:             r.Path,
-		Platform:         r.Platform.String(),
+		Language:         r.Language.String(),
 		TotalTestFiles:   r.TotalTestFiles,
 		TotalTestMethods: r.TotalTestMethods,
 		UnparseableFiles: r.UnparseableFiles,

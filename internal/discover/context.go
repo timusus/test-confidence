@@ -11,19 +11,33 @@ import (
 	"github.com/timusus/test-confidence/internal/model"
 	"github.com/timusus/test-confidence/internal/parse"
 	"github.com/timusus/test-confidence/internal/platform/android"
+	"github.com/timusus/test-confidence/internal/platform/ios"
 )
+
+// thirdPartyPkgsForLanguage returns the appropriate third-party package list for a given language.
+func thirdPartyPkgsForLanguage(lang model.Language) []string {
+	if lang == model.Swift {
+		return ios.ThirdPartyPkgs
+	}
+	return android.ThirdPartyPkgs
+}
 
 // BuildProjectContext scans all .kt files in the project to populate a
 // ProjectContext with DI boundary types, fake types, type-to-package mappings,
 // and third-party package prefixes. This runs once before per-file analysis.
 func BuildProjectContext(root string, cfg config.Config) (*model.ProjectContext, error) {
+	lang := DetectLanguage(root)
 	ctx := &model.ProjectContext{
-		Platform:        DetectPlatform(root),
-		Language:        model.Kotlin,
+		Language:        lang,
 		DIBoundaryTypes: make(map[string]bool),
 		FakeTypes:       make(map[string]bool),
 		TypePackages:    make(map[string]string),
-		ThirdPartyPkgs:  android.ThirdPartyPkgs,
+		ThirdPartyPkgs:  thirdPartyPkgsForLanguage(lang),
+	}
+
+	// Swift projects don't use Kotlin files — skip the walk.
+	if ctx.Language == model.Swift {
+		return ctx, nil
 	}
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {

@@ -114,7 +114,6 @@ type ProductionMethod struct {
 }
 
 type ProjectContext struct {
-	Platform        Platform
 	Language        Language
 	DIBoundaryTypes map[string]bool
 	FakeTypes       map[string]bool

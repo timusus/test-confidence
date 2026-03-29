@@ -143,7 +143,7 @@ func TestStripTestDoubleAffixes(t *testing.T) {
 
 func TestPlacementMockPrefixStripping(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.ApplyPlatformDefaults(model.IOS)
+	cfg.ApplyLanguageDefaults(model.Swift)
 	ctx := &model.ProjectContext{
 		DIBoundaryTypes: map[string]bool{},
 		TypePackages:    map[string]string{},

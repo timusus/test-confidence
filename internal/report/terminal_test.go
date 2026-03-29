@@ -11,7 +11,7 @@ import (
 func buildTestScanResult() *model.ScanResult {
 	return &model.ScanResult{
 		Path:             "/project/app",
-		Platform:         model.Android,
+		Language:         model.Kotlin,
 		TotalTestFiles:   14,
 		TotalTestMethods: 89,
 		UnparseableFiles: 0,
@@ -122,7 +122,7 @@ func TestTerminalReportVerbose(t *testing.T) {
 }
 
 func TestTerminalReportEmpty(t *testing.T) {
-	result := &model.ScanResult{Path: ".", Platform: model.Android}
+	result := &model.ScanResult{Path: ".", Language: model.Kotlin}
 	var buf bytes.Buffer
 	err := WriteTerminalReport(&buf, result, false, nil, nil, nil, nil, 0, nil)
 	if err != nil {
@@ -136,7 +136,7 @@ func TestTerminalReportEmpty(t *testing.T) {
 func TestTerminalReportUnparseableWarning(t *testing.T) {
 	result := &model.ScanResult{
 		Path:             ".",
-		Platform:         model.Android,
+		Language:         model.Kotlin,
 		TotalTestFiles:   5,
 		UnparseableFiles: 2,
 	}
@@ -195,7 +195,7 @@ func TestTerminalReportAssertionStrength(t *testing.T) {
 }
 
 func TestTerminalReportAssertionStrengthOmittedWhenEmpty(t *testing.T) {
-	result := &model.ScanResult{Path: ".", Platform: model.Android}
+	result := &model.ScanResult{Path: ".", Language: model.Kotlin}
 	var buf bytes.Buffer
 	err := WriteTerminalReport(&buf, result, false, nil, nil, nil, nil, 0, nil)
 	if err != nil {

@@ -67,9 +67,8 @@ type RiskHotspot struct {
 // gitAnalysis, surfaceAnalysis, setupCoupled, and coverageReport may be nil.
 func WriteTerminalReport(w io.Writer, result *model.ScanResult, verbose bool, gitAnalysis *gitpkg.GitAnalysis, surfaceAnalysis *surface.SurfaceAnalysis, setupCoupled []SetupCoupledFile, costlyTests []CostlyTest, totalUnnecessary int, riskHotspots []RiskHotspot, coverageReport ...*coverage.CoverageReport) error {
 	// Header
-	platformLang := platformLanguage(result.Platform)
 	fmt.Fprintf(w, "Confidence — %d test files, %d test methods (%s)\n",
-		result.TotalTestFiles, result.TotalTestMethods, platformLang)
+		result.TotalTestFiles, result.TotalTestMethods, result.Language.String())
 
 	if result.UnparseableFiles > 0 {
 		fmt.Fprintf(w, "\n  Warning: %d files could not be parsed\n", result.UnparseableFiles)
@@ -969,13 +968,3 @@ func pluralizeSurfaceType(st surface.SurfaceType, count int) string {
 	}
 }
 
-func platformLanguage(p model.Platform) string {
-	switch p {
-	case model.Android:
-		return "Android/Kotlin"
-	case model.IOS:
-		return "iOS/Swift"
-	default:
-		return "Unknown"
-	}
-}

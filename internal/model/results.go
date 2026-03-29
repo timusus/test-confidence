@@ -90,7 +90,7 @@ type FileAnalysis struct {
 
 type ScanResult struct {
 	Path              string
-	Platform          Platform
+	Language          Language
 	TotalTestFiles    int
 	TotalTestMethods  int
 	UnparseableFiles  int

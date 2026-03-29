@@ -14,7 +14,7 @@ type Config struct {
 	Exclude    []string        `yaml:"exclude"`
 
 	// placementOverrides tracks which placement fields were explicitly set by the user.
-	// Fields not in this set will be replaced when ApplyPlatformDefaults is called.
+	// Fields not in this set will be replaced when ApplyLanguageDefaults is called.
 	placementOverrides map[string]bool
 }
 
@@ -31,10 +31,10 @@ type ThresholdConfig struct {
 	AssertionRoulette int `yaml:"assertion_roulette"`
 }
 
-// ApplyPlatformDefaults replaces default placement values with platform-specific
+// ApplyLanguageDefaults replaces default placement values with language-specific
 // defaults for any field that was not explicitly overridden by the user config.
-func (c *Config) ApplyPlatformDefaults(platform model.Platform) {
-	platCfg := DefaultConfigForPlatform(platform)
+func (c *Config) ApplyLanguageDefaults(lang model.Language) {
+	platCfg := DefaultConfigForLanguage(lang)
 
 	if !c.placementOverrides["boundary"] {
 		c.Placement.Boundary = platCfg.Placement.Boundary
